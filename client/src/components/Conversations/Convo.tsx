@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useRecoilValue } from 'recoil';
+import { Snowflake } from 'lucide-react';
 import { useParams } from 'react-router-dom';
 import { Constants } from 'librechat-data-provider';
 import { useToastContext, useMediaQuery } from '@librechat/client';
@@ -38,7 +39,7 @@ export default function Conversation({
   const activeConvos = useRecoilValue(store.allConversationsSelector);
   const isSmallScreen = useMediaQuery('(max-width: 768px)');
   const isShiftHeld = useShiftKey();
-  const { conversationId, title = '' } = conversation;
+  const { conversationId, title = '', isFrozen = false } = conversation as any;
 
   const [titleInput, setTitleInput] = useState(title || '');
   const [renaming, setRenaming] = useState(false);
@@ -175,6 +176,7 @@ export default function Conversation({
     isPopoverActive,
     setIsPopoverActive: handlePopoverOpenChange,
     isShiftHeld: isActiveConvo ? isShiftHeld : false,
+    isFrozen,
   };
 
   return (
@@ -185,6 +187,7 @@ export default function Conversation({
         isActiveConvo || isPopoverActive
           ? 'bg-surface-active-alt before:absolute before:bottom-1 before:left-0 before:top-1 before:w-0.5 before:rounded-full before:bg-black dark:before:bg-white'
           : 'hover:bg-surface-active-alt',
+        isFrozen && 'bg-blue-500/10 dark:bg-blue-500/10 opacity-80',
       )}
       role="button"
       tabIndex={renaming ? -1 : 0}
@@ -256,6 +259,10 @@ export default function Conversation({
                 d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
               />
             </svg>
+          ) : isFrozen ? (
+            <div className="relative flex items-center justify-center h-5 w-5 rounded-full bg-blue-500/20 text-blue-500">
+              <Snowflake className="h-3.5 w-3.5" />
+            </div>
           ) : (
             <EndpointIcon
               conversation={conversation}

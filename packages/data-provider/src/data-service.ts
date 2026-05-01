@@ -733,6 +733,12 @@ export function updateConversation(
   return request.post(endpoints.updateConversation(), { arg: payload });
 }
 
+export function updateFrozenConversation(
+  payload: { conversationId: string; isFrozen: boolean },
+): Promise<t.TUpdateConversationResponse> {
+  return request.post(endpoints.updateFrozenConversation(), { arg: payload });
+}
+
 export function archiveConversation(
   payload: t.TArchiveConversationRequest,
 ): Promise<t.TArchiveConversationResponse> {

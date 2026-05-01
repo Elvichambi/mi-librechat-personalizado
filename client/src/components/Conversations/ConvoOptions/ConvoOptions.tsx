@@ -4,7 +4,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { QueryKeys } from 'librechat-data-provider';
 import { useQueryClient } from '@tanstack/react-query';
 import { DropdownPopup, Spinner, useToastContext } from '@librechat/client';
-import { Ellipsis, Share2, CopyPlus, Archive, Pen, Trash } from 'lucide-react';
+import { Ellipsis, Share2, CopyPlus, Archive, Pen, Trash, Snowflake } from 'lucide-react';
 import type { MouseEvent } from 'react';
 import type { TMessage } from 'librechat-data-provider';
 import {
@@ -12,6 +12,7 @@ import {
   useDeleteConversationMutation,
   useGetStartupConfig,
   useArchiveConvoMutation,
+  useUpdateFrozenMutation,
 } from '~/data-provider';
 import { useLocalize, useNavigateToConvo, useNewConvo } from '~/hooks';
 import { NotificationSeverity } from '~/common';
@@ -29,6 +30,7 @@ function ConvoOptions({
   setIsPopoverActive,
   isActiveConvo,
   isShiftHeld = false,
+  isFrozen = false,
 }: {
   conversationId: string | null;
   title: string | null;
@@ -38,6 +40,7 @@ function ConvoOptions({
   setIsPopoverActive: (open: boolean) => void;
   isActiveConvo: boolean;
   isShiftHeld?: boolean;
+  isFrozen?: boolean;
 }) {
   const localize = useLocalize();
   const queryClient = useQueryClient();
@@ -58,6 +61,7 @@ function ConvoOptions({
   const [announcement, setAnnouncement] = useState('');
 
   const archiveConvoMutation = useArchiveConvoMutation();
+  const updateFrozenMutation = useUpdateFrozenMutation(currentConvoId ?? '');
 
   const deleteMutation = useDeleteConversationMutation({
     onSuccess: () => {
@@ -183,6 +187,39 @@ function ConvoOptions({
     });
   }, [conversationId, duplicateConversation]);
 
+  const duplicateAndFreeze = useDuplicateConversationMutation({
+    onSuccess: (data) => {
+      // Congelamos la copia
+      updateFrozenMutation.mutate({
+        conversationId: data.conversation.conversationId,
+        isFrozen: true,
+      });
+      // Archivamos la copia para que funcione como marcador
+      archiveConvoMutation.mutate({
+        conversationId: data.conversation.conversationId,
+        isArchived: true,
+      });
+      showToast({ message: 'Snapshot congelado guardado en Archivados', status: 'success' });
+      setIsPopoverActive(false);
+    },
+  });
+
+  const handleFreezeClick = useCallback(() => {
+    if (isFrozen) {
+      // Si ya está congelado, simplemente lo descongela
+      updateFrozenMutation.mutate({
+        conversationId: conversationId ?? '',
+        isFrozen: false,
+      });
+      return;
+    }
+
+    // Si NO está congelado, creamos una copia (snapshot) y la congelamos
+    duplicateAndFreeze.mutate({
+      conversationId: conversationId ?? '',
+    });
+  }, [conversationId, isFrozen, duplicateAndFreeze, updateFrozenMutation]);
+
   const dropdownItems = useMemo(
     () => [
       {
@@ -201,6 +238,16 @@ function ConvoOptions({
         label: localize('com_ui_rename'),
         onClick: renameHandler,
         icon: <Pen className="icon-sm mr-2 text-text-primary" aria-hidden="true" />,
+      },
+      {
+        label: isFrozen ? 'Descongelar' : 'Congelar (Guardar Snapshot)',
+        onClick: handleFreezeClick,
+        hideOnClick: false,
+        icon: (updateFrozenMutation.isLoading || duplicateAndFreeze.isLoading) ? (
+          <Spinner className="size-4" />
+        ) : (
+          <Snowflake className="icon-sm mr-2 text-text-primary" aria-hidden="true" />
+        ),
       },
       {
         label: localize('com_ui_duplicate'),
@@ -244,6 +291,10 @@ function ConvoOptions({
       isDuplicateLoading,
       handleArchiveClick,
       handleDuplicateClick,
+      handleFreezeClick,
+      isFrozen,
+      updateFrozenMutation.isLoading,
+      duplicateAndFreeze.isLoading,
     ],
   );
 

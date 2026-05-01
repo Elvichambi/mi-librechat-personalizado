@@ -1,6 +1,6 @@
 import { memo, useRef, useMemo, useEffect, useState, useCallback } from 'react';
 import { useWatch } from 'react-hook-form';
-import { TextareaAutosize } from '@librechat/client';
+import { TextareaAutosize, useToastContext } from '@librechat/client';
 import { useRecoilState, useRecoilValue } from 'recoil';
 import { Constants, isAssistantsEndpoint, isAgentsEndpoint } from 'librechat-data-provider';
 import type { TConversation } from 'librechat-data-provider';
@@ -36,6 +36,9 @@ import EditBadges from './EditBadges';
 import BadgeRow from './BadgeRow';
 import Mention from './Mention';
 import store from '~/store';
+import { CopyPlus, Snowflake } from 'lucide-react';
+import { useDuplicateConversationMutation } from '~/data-provider';
+import { useNavigateToConvo } from '~/hooks';
 
 interface ChatFormProps {
   index: number;
@@ -115,10 +118,25 @@ const ChatForm = memo(function ChatForm({
         !assistantMap?.[endpoint ?? '']?.[conversation?.assistant_id ?? '']),
     [conversation?.assistant_id, endpoint, assistantMap],
   );
+  const isFrozen = useMemo(() => (conversation as any)?.isFrozen === true, [conversation]);
   const disableInputs = useMemo(
-    () => requiresKey || invalidAssistant,
-    [requiresKey, invalidAssistant],
+    () => requiresKey || invalidAssistant || isFrozen,
+    [requiresKey, invalidAssistant, isFrozen],
   );
+
+  const { showToast } = useToastContext();
+  const { navigateToConvo } = useNavigateToConvo(index);
+  const duplicateConversation = useDuplicateConversationMutation({
+    onSuccess: (data) => {
+      navigateToConvo(data.conversation);
+      showToast({ message: localize('com_ui_duplication_success') || 'Clonado con éxito', status: 'success' });
+    },
+  });
+
+  const handleCloneClick = useCallback(() => {
+    if (!conversationId || conversationId === Constants.NEW_CONVO) return;
+    duplicateConversation.mutate({ conversationId });
+  }, [conversationId, duplicateConversation]);
 
   const handleContainerClick = useCallback(() => {
     /** Check if the device is a touchscreen */
@@ -293,6 +311,12 @@ const ChatForm = memo(function ChatForm({
                 >
                   <TextareaAutosize
                     {...registerProps}
+                    className={cn(
+                      'm-0 w-full resize-none border-0 bg-transparent py-[10px] pr-10 focus:ring-0 focus-visible:ring-0',
+                      'dark:bg-transparent md:py-3.5',
+                      'pl-3 md:pl-4',
+                    )}
+                    placeholder={isFrozen ? '❄️ Chat congelado (Descongélalo en las opciones para editar)' : ''}
                     ref={(e) => {
                       ref(e);
                       (textAreaRef as React.MutableRefObject<HTMLTextAreaElement | null>).current =
@@ -329,6 +353,7 @@ const ChatForm = memo(function ChatForm({
                 </div>
               </div>
             )}
+            {!isFrozen && (
             <div
               className={cn(
                 '@container items-between flex gap-2 pb-2',
@@ -380,6 +405,7 @@ const ChatForm = memo(function ChatForm({
                 )}
               </div>
             </div>
+            )}
             {TextToSpeech && automaticPlayback && <StreamAudio index={index} />}
           </div>
         </div>

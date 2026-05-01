@@ -113,6 +113,7 @@ export const genTitle = (conversationId: string) =>
   `${conversationsRoot}/gen_title/${encodeURIComponent(conversationId)}`;
 
 export const updateConversation = () => `${conversationsRoot}/update`;
+export const updateFrozenConversation = () => `${conversationsRoot}/update-frozen`;
 
 export const archiveConversation = () => `${conversationsRoot}/archive`;
 

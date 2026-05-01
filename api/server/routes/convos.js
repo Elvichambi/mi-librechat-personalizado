@@ -229,6 +229,41 @@ router.post('/update', validateConvoAccess, async (req, res) => {
   }
 });
 
+/**
+ * Updates a conversation's frozen status.
+ * @route POST /update-frozen
+ * @param {string} req.body.arg.conversationId - The conversation ID to update.
+ * @param {boolean} req.body.arg.isFrozen - The new frozen status for the conversation.
+ * @returns {object} 201 - The updated conversation object.
+ */
+router.post('/update-frozen', validateConvoAccess, async (req, res) => {
+  const { conversationId, isFrozen } = req.body?.arg ?? {};
+
+  if (!conversationId) {
+    return res.status(400).json({ error: 'conversationId is required' });
+  }
+
+  if (typeof isFrozen !== 'boolean') {
+    return res.status(400).json({ error: 'isFrozen must be a boolean' });
+  }
+
+  try {
+    const dbResponse = await db.saveConvo(
+      {
+        userId: req?.user?.id,
+        isTemporary: req?.body?.isTemporary,
+        interfaceConfig: req?.config?.interfaceConfig,
+      },
+      { conversationId, isFrozen },
+      { context: `POST /api/convos/update-frozen ${conversationId}` },
+    );
+    res.status(201).json(dbResponse);
+  } catch (error) {
+    logger.error('Error updating frozen status', error);
+    res.status(500).send('Error updating frozen status');
+  }
+});
+
 const { importIpLimiter, importUserLimiter } = createImportLimiters();
 /** Fork and duplicate share one rate-limit budget (same "clone" operation class) */
 const { forkIpLimiter, forkUserLimiter } = createForkLimiters();

@@ -40,6 +40,10 @@ const convoSchema: Schema<IConversation> = new Schema(
       type: String,
       index: true,
     },
+    isFrozen: {
+      type: Boolean,
+      default: false,
+    },
   },
   { timestamps: true },
 );

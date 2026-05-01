@@ -39,6 +39,27 @@ export const useUpdateConversationMutation = (
   );
 };
 
+export const useUpdateFrozenMutation = (
+  id: string,
+): UseMutationResult<
+  t.TUpdateConversationResponse,
+  unknown,
+  { conversationId: string; isFrozen: boolean },
+  unknown
+> => {
+  const queryClient = useQueryClient();
+  return useMutation(
+    (payload: { conversationId: string; isFrozen: boolean }) => dataService.updateFrozenConversation(payload),
+    {
+      onSuccess: (updatedConvo, payload) => {
+        const targetId = payload.conversationId || id;
+        queryClient.setQueryData([QueryKeys.conversation, targetId], updatedConvo);
+        updateConvoInAllQueries(queryClient, targetId, () => updatedConvo);
+      },
+    },
+  );
+};
+
 export const useTagConversationMutation = (
   conversationId: string,
   options?: t.updateTagsInConvoOptions,

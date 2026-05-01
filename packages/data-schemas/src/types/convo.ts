@@ -52,6 +52,7 @@ export interface IConversation extends Document {
   disableStreaming?: boolean;
   fileTokenLimit?: number;
   // Additional fields
+  isFrozen?: boolean;
   files?: string[];
   expiredAt?: Date;
   createdAt?: Date;
