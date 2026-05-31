@@ -114,7 +114,14 @@ function ModelCard({ modelId, endpoint, isSelected, onSelect, favoriteClick, isF
   );
 }
 
-function ModelSelectionSidebar({ onClose }: { onClose: () => void }) {
+interface SelectionSidebarProps {
+  onClose: () => void;
+  panelWidth: number;
+  isResizing: boolean;
+  handleResizeStart: (e: React.MouseEvent) => void;
+}
+
+function ModelSelectionSidebar({ onClose, panelWidth, isResizing, handleResizeStart }: SelectionSidebarProps) {
   const localize = useLocalize();
   const { mappedEndpoints, selectedValues, handleSelectModel } = useModelSelectorContext();
   const { isFavoriteModel, toggleFavoriteModel } = useFavorites();
@@ -162,20 +169,32 @@ function ModelSelectionSidebar({ onClose }: { onClose: () => void }) {
   }, [mappedEndpoints, selectedTab, searchQuery, selectedValues, isFavoriteModel]);
 
   return (
-    <div className="flex h-full w-[320px] flex-shrink-0 flex-col border-l border-border-light bg-surface-primary animate-slide-in-right">
+    <div 
+      className="flex h-full flex-shrink-0 flex-col border-l border-border-light bg-surface-primary animate-slide-in-right z-50 fixed right-0 top-0 shadow-2xl"
+      style={{
+        width: panelWidth,
+        transition: isResizing ? 'none' : 'width 0.15s ease',
+      }}
+    >
+      {/* Resizable handle */}
+      <div
+        role="separator"
+        aria-label="Resize sidebar"
+        className="absolute left-0 top-0 z-20 h-full w-1.5 cursor-col-resize bg-transparent hover:bg-blue-500/20 active:bg-blue-500/40 transition-colors"
+        onMouseDown={handleResizeStart}
+      />
+
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-border-light px-3 py-3">
-        <div className="flex items-center gap-2">
-          <button
-            onClick={onClose}
-            className="flex h-7 w-7 items-center justify-center rounded-lg border border-border-light text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
-            aria-label="Back to settings"
-            title="Back to settings"
-          >
-            <ChevronRight className="h-4 w-4 rotate-180" />
-          </button>
-          <h2 className="text-sm font-semibold text-text-primary">Model selection</h2>
-        </div>
+      <div className="flex items-center justify-between border-b border-border-light px-4 py-3.5">
+        <h2 className="text-sm font-semibold text-text-primary">Model selection</h2>
+        <button
+          onClick={onClose}
+          className="flex h-7 w-7 items-center justify-center rounded-lg border border-border-light text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
+          aria-label="Close"
+          title="Close model selection"
+        >
+          <ChevronRight className="h-4 w-4" />
+        </button>
       </div>
 
       {/* Search Input */}
@@ -192,8 +211,8 @@ function ModelSelectionSidebar({ onClose }: { onClose: () => void }) {
         </div>
       </div>
 
-      {/* Horizontal Tabs / Filter pills */}
-      <div className="flex gap-1.5 overflow-x-auto px-4 py-2 border-b border-border-light hide-scrollbar">
+      {/* Wrapped Tab pills - Google AI Studio style */}
+      <div className="flex flex-wrap gap-1.5 px-4 py-2.5 border-b border-border-light">
         <button
           onClick={() => setSelectedTab('all')}
           className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider whitespace-nowrap transition-all duration-200 border ${
@@ -255,11 +274,109 @@ function ModelSelectionSidebar({ onClose }: { onClose: () => void }) {
   );
 }
 
+function SystemInstructionsSidebar({ onClose, panelWidth, isResizing, handleResizeStart }: SelectionSidebarProps) {
+  const { conversation } = useChatContext();
+  const { setOption } = useSetIndexOptions();
+
+  if (!conversation) {
+    return null;
+  }
+
+  const {
+    promptPrefix = '',
+    system = '',
+  } = conversation;
+
+  const systemText = promptPrefix || system || '';
+
+  const setSystem = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setOption('promptPrefix')(e.target.value);
+    setOption('system')(e.target.value);
+  };
+
+  return (
+    <div 
+      className="flex h-full flex-shrink-0 flex-col border-l border-border-light bg-surface-primary animate-slide-in-right z-50 fixed right-0 top-0 shadow-2xl"
+      style={{
+        width: panelWidth,
+        transition: isResizing ? 'none' : 'width 0.15s ease',
+      }}
+    >
+      {/* Resizable handle */}
+      <div
+        role="separator"
+        aria-label="Resize sidebar"
+        className="absolute left-0 top-0 z-20 h-full w-1.5 cursor-col-resize bg-transparent hover:bg-blue-500/20 active:bg-blue-500/40 transition-colors"
+        onMouseDown={handleResizeStart}
+      />
+
+      {/* Header */}
+      <div className="flex items-center justify-between border-b border-border-light px-4 py-3.5">
+        <h2 className="text-sm font-bold text-text-primary uppercase tracking-wider">System instructions</h2>
+        <button
+          onClick={onClose}
+          className="flex h-7 w-7 items-center justify-center rounded-lg border border-border-light text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
+          aria-label="Close"
+          title="Close instructions"
+        >
+          <ChevronRight className="h-4 w-4" />
+        </button>
+      </div>
+
+      {/* Massive comfortable input space */}
+      <div className="flex-grow p-5 flex flex-col gap-3">
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-semibold text-text-secondary">Instructions</span>
+          <span className="text-[10px] text-text-tertiary">Instructions are saved automatically</span>
+        </div>
+        
+        <textarea
+          className="w-full flex-grow resize-none rounded-2xl border border-border-medium bg-surface-secondary p-5 text-sm text-text-primary leading-relaxed focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          placeholder="Optional tone and style instructions for the model"
+          value={systemText}
+          onChange={setSystem}
+          autoFocus
+        />
+      </div>
+    </div>
+  );
+}
+
 function RunSettingsContent({ setCollapsed }: { setCollapsed: (val: boolean) => void }) {
   const localize = useLocalize();
   const [showModelSelection, setShowModelSelection] = useState(false);
+  const [showSystemInstructions, setShowSystemInstructions] = useState(false);
   const { conversation } = useChatContext();
   const { setOption } = useSetIndexOptions();
+
+  // Width and resize state
+  const [panelWidth, setPanelWidth] = useState(() => {
+    const saved = localStorage.getItem('run-settings:width');
+    return saved ? parseInt(saved, 10) : 320;
+  });
+  const [isResizing, setIsResizing] = useState(false);
+
+  const handleResizeStart = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizing(true);
+    document.body.style.userSelect = 'none';
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const newWidth = Math.max(280, Math.min(window.innerWidth - moveEvent.clientX, 650));
+      setPanelWidth(newWidth);
+      localStorage.setItem('run-settings:width', String(newWidth));
+    };
+
+    const handleMouseUp = () => {
+      setIsResizing(false);
+      document.body.style.userSelect = '';
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  };
 
   const {
     mappedEndpoints,
@@ -295,20 +412,6 @@ function RunSettingsContent({ setCollapsed }: { setCollapsed: (val: boolean) => 
 
   const modelInfo = useMemo(() => getModelInfo(selectedValues.model || ''), [selectedValues.model]);
 
-  if (showModelSelection) {
-    return (
-      <div className="h-full">
-        <ModelSelectionSidebar onClose={() => setShowModelSelection(false)} />
-        <DialogManager
-          keyDialogOpen={keyDialogOpen}
-          onOpenChange={onOpenChange}
-          endpointsConfig={endpointsConfig || {}}
-          keyDialogEndpoint={keyDialogEndpoint || undefined}
-        />
-      </div>
-    );
-  }
-
   if (!conversation) {
     return null;
   }
@@ -320,83 +423,143 @@ function RunSettingsContent({ setCollapsed }: { setCollapsed: (val: boolean) => 
 
   const systemText = promptPrefix || system || '';
 
-  const setSystem = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setOption('promptPrefix')(e.target.value);
-    setOption('system')(e.target.value);
-  };
-
   return (
-    <div className="flex h-full w-[320px] flex-shrink-0 flex-col border-l border-border-light bg-surface-primary">
-      {/* Header — sticky */}
-      <div className="flex items-center gap-2 border-b border-border-light px-3 py-3">
-        <button
-          onClick={() => setCollapsed(true)}
-          className="flex h-7 w-7 items-center justify-center rounded-lg border border-border-light text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
-          aria-label="Collapse settings"
-          data-testid="collapse-run-settings"
-          title="Collapse panel"
-        >
-          <ChevronRight className="h-4 w-4" />
-        </button>
-        <h2 className="text-sm font-semibold text-text-primary">Run settings</h2>
-      </div>
-
-      {/* Scrollable content */}
-      <div className="flex-1 overflow-y-auto overflow-x-hidden">
-        
-        {/* Active Model Card — Google AI Studio style */}
+    <>
+      {/* Blurred Backdrop Overlay */}
+      {(showModelSelection || showSystemInstructions) && (
         <div 
-          onClick={() => setShowModelSelection(true)}
-          className="mx-4 mt-4 p-4 rounded-2xl border border-border-light bg-surface-secondary hover:bg-surface-hover hover:border-border-medium hover:shadow-[0_2px_12px_rgba(0,0,0,0.04)] cursor-pointer transition-all duration-200 ease-in-out group"
+          className="fixed inset-0 z-40 bg-black/40 backdrop-blur-[2.5px] animate-fade-in" 
+          onClick={() => {
+            setShowModelSelection(false);
+            setShowSystemInstructions(false);
+          }}
+        />
+      )}
+
+      {/* Render selected Sidebar Drawer */}
+      {showModelSelection ? (
+        <ModelSelectionSidebar 
+          onClose={() => setShowModelSelection(false)} 
+          panelWidth={panelWidth}
+          isResizing={isResizing}
+          handleResizeStart={handleResizeStart}
+        />
+      ) : showSystemInstructions ? (
+        <SystemInstructionsSidebar 
+          onClose={() => setShowSystemInstructions(false)} 
+          panelWidth={panelWidth}
+          isResizing={isResizing}
+          handleResizeStart={handleResizeStart}
+        />
+      ) : (
+        /* Normal Settings View */
+        <div 
+          className="relative flex h-full flex-shrink-0 flex-col border-l border-border-light bg-surface-primary"
+          style={{
+            width: panelWidth,
+            transition: isResizing ? 'none' : 'width 0.15s ease',
+          }}
         >
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-2 min-w-0">
-              {selectedIcon && React.isValidElement(selectedIcon) && (
-                <div className="flex h-5 w-5 flex-shrink-0 items-center justify-center overflow-hidden rounded-full bg-surface-primary p-0.5 border border-border-light">
-                  {selectedIcon}
-                </div>
-              )}
-              <span className="text-xs font-bold text-text-primary group-hover:text-blue-500 transition-colors truncate">
-                {selectedDisplayValue}
-              </span>
-            </div>
-            <ChevronRight className="h-3.5 w-3.5 text-text-tertiary group-hover:translate-x-0.5 transition-transform shrink-0" />
-          </div>
-          <p className="text-[10px] text-text-tertiary font-mono mb-2 truncate">{selectedValues.model}</p>
-          <p className="text-xs text-text-secondary leading-relaxed mb-3 line-clamp-3">
-            {modelInfo.description}
-          </p>
-          <div className="grid grid-cols-2 gap-y-1.5 gap-x-2 text-[10px] text-text-secondary border-t border-border-light/50 pt-2.5">
-            {modelInfo.contextWindow && (
-              <div>
-                <span className="font-semibold block text-text-tertiary">Context size</span>
-                <span className="text-text-primary font-medium">{modelInfo.contextWindow}</span>
-              </div>
-            )}
-            {modelInfo.knowledgeCutoff && (
-              <div>
-                <span className="font-semibold block text-text-tertiary">Knowledge cutoff</span>
-                <span className="text-text-primary font-medium">{modelInfo.knowledgeCutoff}</span>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* System Instructions */}
-        <div className="flex flex-col gap-2 p-4 border-b border-border-light">
-          <label className="text-xs font-bold text-text-primary uppercase tracking-wider">System instructions</label>
-          <textarea
-            className="w-full resize-y rounded-xl border border-border-light bg-surface-secondary p-3 text-xs text-text-primary focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 min-h-[90px]"
-            placeholder="Optional tone and style instructions for the model"
-            value={systemText}
-            onChange={setSystem}
+          {/* Resizable handle */}
+          <div
+            role="separator"
+            aria-label="Resize settings"
+            className="absolute left-0 top-0 z-20 h-full w-1.5 cursor-col-resize bg-transparent hover:bg-blue-500/25 active:bg-blue-500/40 transition-colors"
+            onMouseDown={handleResizeStart}
           />
-        </div>
 
-        {/* Dynamic Parameters — from original LibreChat */}
-        <Parameters />
-      </div>
-    </div>
+          {/* Header — sticky */}
+          <div className="flex items-center gap-2 border-b border-border-light px-3 py-3 select-none">
+            <button
+              onClick={() => setCollapsed(true)}
+              className="flex h-7 w-7 items-center justify-center rounded-lg border border-border-light text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
+              aria-label="Collapse settings"
+              data-testid="collapse-run-settings"
+              title="Collapse panel"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </button>
+            <h2 className="text-sm font-semibold text-text-primary">Run settings</h2>
+          </div>
+
+          {/* Scrollable content */}
+          <div className="flex-1 overflow-y-auto overflow-x-hidden">
+            
+            {/* Active Model Card — Google AI Studio style */}
+            <div 
+              onClick={() => {
+                if (panelWidth < 450) {
+                  setPanelWidth(450);
+                }
+                setShowModelSelection(true);
+              }}
+              className="mx-4 mt-4 p-4 rounded-2xl border border-border-light bg-surface-secondary hover:bg-surface-hover hover:border-border-medium hover:shadow-[0_2px_12px_rgba(0,0,0,0.04)] cursor-pointer transition-all duration-200 ease-in-out group"
+            >
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  {selectedIcon && React.isValidElement(selectedIcon) && (
+                    <div className="flex h-5 w-5 flex-shrink-0 items-center justify-center overflow-hidden rounded-full bg-surface-primary p-0.5 border border-border-light">
+                      {selectedIcon}
+                    </div>
+                  )}
+                  <span className="text-xs font-bold text-text-primary group-hover:text-blue-500 transition-colors truncate">
+                    {selectedDisplayValue}
+                  </span>
+                </div>
+                <ChevronRight className="h-3.5 w-3.5 text-text-tertiary group-hover:translate-x-0.5 transition-transform shrink-0" />
+              </div>
+              <p className="text-[10px] text-text-tertiary font-mono mb-2 truncate">{selectedValues.model}</p>
+              <p className="text-xs text-text-secondary leading-relaxed mb-3 line-clamp-3">
+                {modelInfo.description}
+              </p>
+              <div className="grid grid-cols-2 gap-y-1.5 gap-x-2 text-[10px] text-text-secondary border-t border-border-light/50 pt-2.5">
+                {modelInfo.contextWindow && (
+                  <div>
+                    <span className="font-semibold block text-text-tertiary">Context size</span>
+                    <span className="text-text-primary font-medium">{modelInfo.contextWindow}</span>
+                  </div>
+                )}
+                {modelInfo.knowledgeCutoff && (
+                  <div>
+                    <span className="font-semibold block text-text-tertiary">Knowledge cutoff</span>
+                    <span className="text-text-primary font-medium">{modelInfo.knowledgeCutoff}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* System Instructions — Card style leading to wide editor */}
+            <div 
+              onClick={() => {
+                if (panelWidth < 480) {
+                  setPanelWidth(480);
+                }
+                setShowSystemInstructions(true);
+              }}
+              className="mx-4 mt-4 p-4 rounded-2xl border border-border-light bg-surface-secondary hover:bg-surface-hover hover:border-border-medium hover:shadow-[0_2px_12px_rgba(0,0,0,0.04)] cursor-pointer transition-all duration-200 ease-in-out group"
+            >
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-xs font-bold text-text-primary uppercase tracking-wider cursor-pointer">System instructions</label>
+                <ChevronRight className="h-3.5 w-3.5 text-text-tertiary group-hover:translate-x-0.5 transition-transform" />
+              </div>
+              <p className="text-xs text-text-secondary leading-relaxed line-clamp-3">
+                {systemText || "Optional tone and style instructions for the model"}
+              </p>
+            </div>
+
+            {/* Dynamic Parameters — from original LibreChat */}
+            <Parameters />
+          </div>
+        </div>
+      )}
+      
+      <DialogManager
+        keyDialogOpen={keyDialogOpen}
+        onOpenChange={onOpenChange}
+        endpointsConfig={endpointsConfig || {}}
+        keyDialogEndpoint={keyDialogEndpoint || undefined}
+      />
+    </>
   );
 }
 
