@@ -1,6 +1,6 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useRecoilState, useRecoilValue } from 'recoil';
-import { ChevronLeft, ChevronRight, Search, Star, Key, CheckCircle, HelpCircle } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Search, Star, Key, CheckCircle, HelpCircle, Trash2, ChevronDown } from 'lucide-react';
 import { useSetIndexOptions } from '~/hooks/Conversations';
 import { useChatContext } from '~/Providers';
 import Parameters from '~/components/SidePanel/Parameters/Panel';
@@ -119,9 +119,10 @@ interface SelectionSidebarProps {
   panelWidth: number;
   isResizing: boolean;
   handleResizeStart: (e: React.MouseEvent) => void;
+  isClosing?: boolean;
 }
 
-function ModelSelectionSidebar({ onClose, panelWidth, isResizing, handleResizeStart }: SelectionSidebarProps) {
+function ModelSelectionSidebar({ onClose, panelWidth, isResizing, handleResizeStart, isClosing = false }: SelectionSidebarProps) {
   const localize = useLocalize();
   const { mappedEndpoints, selectedValues, handleSelectModel } = useModelSelectorContext();
   const { isFavoriteModel, toggleFavoriteModel } = useFavorites();
@@ -170,7 +171,9 @@ function ModelSelectionSidebar({ onClose, panelWidth, isResizing, handleResizeSt
 
   return (
     <div 
-      className="flex h-full flex-shrink-0 flex-col border-l border-border-light bg-surface-primary animate-slide-in-right z-50 fixed right-0 top-0 shadow-2xl"
+      className={`flex h-full flex-shrink-0 flex-col border-l border-border-light bg-surface-primary z-50 fixed right-0 top-0 shadow-2xl ${
+        isClosing ? 'animate-slide-out-right' : 'animate-slide-in-right'
+      }`}
       style={{
         width: panelWidth,
         transition: isResizing ? 'none' : 'width 0.15s ease',
@@ -274,29 +277,110 @@ function ModelSelectionSidebar({ onClose, panelWidth, isResizing, handleResizeSt
   );
 }
 
-function SystemInstructionsSidebar({ onClose, panelWidth, isResizing, handleResizeStart }: SelectionSidebarProps) {
+function SystemInstructionsSidebar({ onClose, panelWidth, isResizing, handleResizeStart, isClosing = false }: SelectionSidebarProps) {
   const { conversation } = useChatContext();
   const { setOption } = useSetIndexOptions();
 
-  if (!conversation) {
-    return null;
-  }
+  // Load instructions list from localStorage
+  const [instructions, setInstructions] = useState<Array<{ id: string; title: string; text: string }>>(() => {
+    const saved = localStorage.getItem('storylab:system-instructions');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch {
+        // Fail-safe
+      }
+    }
+    return [{ id: 'default', title: 'Untitled', text: '' }];
+  });
 
   const {
     promptPrefix = '',
     system = '',
-  } = conversation;
+  } = conversation || {};
 
   const systemText = promptPrefix || system || '';
 
-  const setSystem = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setOption('promptPrefix')(e.target.value);
-    setOption('system')(e.target.value);
+  // Active selected ID in selector dropdown
+  const [selectedId, setSelectedId] = useState<string>(() => {
+    const found = instructions.find(item => item.text === systemText);
+    return found ? found.id : (instructions[0]?.id || 'default');
+  });
+
+  // Save instructions helper
+  const saveToLocalStorage = (list: Array<{ id: string; title: string; text: string }>) => {
+    setInstructions(list);
+    localStorage.setItem('storylab:system-instructions', JSON.stringify(list));
   };
+
+  const handleCreateNew = () => {
+    const newId = String(Date.now());
+    const newItem = { id: newId, title: 'Untitled', text: '' };
+    const updated = [newItem, ...instructions];
+    saveToLocalStorage(updated);
+    setSelectedId(newId);
+
+    // Clear active system instruction in LibreChat conversation
+    setOption('promptPrefix')('');
+    setOption('system')('');
+  };
+
+  const handleDeleteActive = () => {
+    if (instructions.length <= 1) {
+      const updated = [{ id: 'default', title: 'Untitled', text: '' }];
+      saveToLocalStorage(updated);
+      setSelectedId('default');
+      setOption('promptPrefix')('');
+      setOption('system')('');
+      return;
+    }
+
+    const updated = instructions.filter(item => item.id !== selectedId);
+    saveToLocalStorage(updated);
+    
+    // Select the first remaining item
+    const nextItem = updated[0];
+    setSelectedId(nextItem.id);
+    setOption('promptPrefix')(nextItem.text);
+    setOption('system')(nextItem.text);
+  };
+
+  const handleTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    const updated = instructions.map(item => {
+      if (item.id === selectedId) {
+        return { ...item, title: val };
+      }
+      return item;
+    });
+    saveToLocalStorage(updated);
+  };
+
+  const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const val = e.target.value;
+    const updated = instructions.map(item => {
+      if (item.id === selectedId) {
+        return { ...item, text: val };
+      }
+      return item;
+    });
+    saveToLocalStorage(updated);
+
+    // Sync in real time with LibreChat active conversation
+    setOption('promptPrefix')(val);
+    setOption('system')(val);
+  };
+
+  // Find the active instruction item
+  const activeItem = useMemo(() => {
+    return instructions.find(item => item.id === selectedId) || { id: 'default', title: 'Untitled', text: '' };
+  }, [instructions, selectedId]);
 
   return (
     <div 
-      className="flex h-full flex-shrink-0 flex-col border-l border-border-light bg-surface-primary animate-slide-in-right z-50 fixed right-0 top-0 shadow-2xl"
+      className={`flex h-full flex-shrink-0 flex-col border-l border-border-light bg-surface-primary z-50 fixed right-0 top-0 shadow-2xl ${
+        isClosing ? 'animate-slide-out-right' : 'animate-slide-in-right'
+      }`}
       style={{
         width: panelWidth,
         transition: isResizing ? 'none' : 'width 0.15s ease',
@@ -311,7 +395,7 @@ function SystemInstructionsSidebar({ onClose, panelWidth, isResizing, handleResi
       />
 
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-border-light px-4 py-3.5">
+      <div className="flex items-center justify-between border-b border-border-light px-4 py-3.5 select-none">
         <h2 className="text-sm font-bold text-text-primary uppercase tracking-wider">System instructions</h2>
         <button
           onClick={onClose}
@@ -323,20 +407,77 @@ function SystemInstructionsSidebar({ onClose, panelWidth, isResizing, handleResi
         </button>
       </div>
 
-      {/* Massive comfortable input space */}
-      <div className="flex-grow p-5 flex flex-col gap-3">
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-semibold text-text-secondary">Instructions</span>
-          <span className="text-[10px] text-text-tertiary">Instructions are saved automatically</span>
+      <div className="flex-grow p-5 flex flex-col gap-4 min-h-0 select-none">
+        {/* Selector Dropdown / Select box */}
+        <div className="relative">
+          <label className="text-[10px] font-bold text-text-tertiary uppercase tracking-wider block mb-1">Select Instruction Template</label>
+          <div className="relative">
+            <select
+              value={selectedId}
+              onChange={(e) => {
+                const id = e.target.value;
+                if (id === 'create-new') {
+                  handleCreateNew();
+                  return;
+                }
+                setSelectedId(id);
+                const found = instructions.find(item => item.id === id);
+                if (found) {
+                  setOption('promptPrefix')(found.text);
+                  setOption('system')(found.text);
+                }
+              }}
+              className="w-full pl-3 pr-10 py-2 text-xs font-semibold rounded-xl border border-border-light bg-surface-secondary text-text-primary focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 appearance-none cursor-pointer"
+            >
+              {instructions.map(item => (
+                <option key={item.id} value={item.id}>
+                  {item.title || 'Untitled'}
+                </option>
+              ))}
+              <option value="create-new" className="text-blue-500 font-bold border-t border-border-light">+ Create new instruction</option>
+            </select>
+            <ChevronDown className="absolute right-3 top-2 h-4 w-4 text-text-tertiary pointer-events-none" />
+          </div>
         </div>
-        
-        <textarea
-          className="w-full flex-grow resize-none rounded-2xl border border-border-medium bg-surface-secondary p-5 text-sm text-text-primary leading-relaxed focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-          placeholder="Optional tone and style instructions for the model"
-          value={systemText}
-          onChange={setSystem}
-          autoFocus
-        />
+
+        {/* Title Field with Trash Can */}
+        <div className="flex items-center gap-3">
+          <div className="flex-grow min-w-0">
+            <label className="text-[10px] font-bold text-text-tertiary uppercase tracking-wider block mb-1">Instruction Title</label>
+            <input
+              type="text"
+              placeholder="Untitled"
+              value={activeItem.title}
+              onChange={handleTitleChange}
+              className="w-full px-3 py-1.5 text-xs font-semibold rounded-xl border border-border-light bg-surface-secondary text-text-primary focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+          </div>
+          <button
+            onClick={handleDeleteActive}
+            className="flex h-8 w-8 mt-4.5 items-center justify-center rounded-xl border border-red-500/30 bg-red-500/10 text-red-500 transition-all hover:bg-red-500/20 active:scale-95 shrink-0"
+            aria-label="Delete instruction"
+            title="Delete instruction"
+            style={{ marginTop: '18px' }}
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
+        </div>
+
+        {/* Massive comfortable input space */}
+        <div className="flex-grow flex flex-col gap-1.5 min-h-0">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-bold text-text-tertiary uppercase tracking-wider">Instructions</span>
+            <span className="text-[10px] text-text-tertiary">Instructions are saved in local storage</span>
+          </div>
+          
+          <textarea
+            className="w-full flex-grow resize-none rounded-2xl border border-border-medium bg-surface-secondary p-5 text-sm text-text-primary leading-relaxed focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            placeholder="Optional tone and style instructions for the model"
+            value={activeItem.text}
+            onChange={handleTextChange}
+            autoFocus
+          />
+        </div>
       </div>
     </div>
   );
@@ -348,6 +489,11 @@ function RunSettingsContent({ setCollapsed }: { setCollapsed: (val: boolean) => 
   const [showSystemInstructions, setShowSystemInstructions] = useState(false);
   const { conversation } = useChatContext();
   const { setOption } = useSetIndexOptions();
+
+  // Closing animation states
+  const [isClosingModelSelection, setIsClosingModelSelection] = useState(false);
+  const [isClosingSystemInstructions, setIsClosingSystemInstructions] = useState(false);
+  const [isClosingOverlay, setIsClosingOverlay] = useState(false);
 
   // Width and resize state
   const [panelWidth, setPanelWidth] = useState(() => {
@@ -382,6 +528,36 @@ function RunSettingsContent({ setCollapsed }: { setCollapsed: (val: boolean) => 
 
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
+  };
+
+  const handleCloseModelSelection = () => {
+    setIsClosingOverlay(true);
+    setIsClosingModelSelection(true);
+    setTimeout(() => {
+      setShowModelSelection(false);
+      setIsClosingModelSelection(false);
+      setIsClosingOverlay(false);
+      setPanelWidth(lastNormalWidth);
+    }, 280);
+  };
+
+  const handleCloseSystemInstructions = () => {
+    setIsClosingOverlay(true);
+    setIsClosingSystemInstructions(true);
+    setTimeout(() => {
+      setShowSystemInstructions(false);
+      setIsClosingSystemInstructions(false);
+      setIsClosingOverlay(false);
+      setPanelWidth(lastNormalWidth);
+    }, 280);
+  };
+
+  const handleCloseAll = () => {
+    if (showModelSelection) {
+      handleCloseModelSelection();
+    } else if (showSystemInstructions) {
+      handleCloseSystemInstructions();
+    }
   };
 
   const {
@@ -434,35 +610,29 @@ function RunSettingsContent({ setCollapsed }: { setCollapsed: (val: boolean) => 
       {/* Blurred Backdrop Overlay */}
       {(showModelSelection || showSystemInstructions) && (
         <div 
-          className="fixed inset-0 z-40 bg-black/40 backdrop-blur-[2.5px] animate-fade-in" 
-          onClick={() => {
-            setShowModelSelection(false);
-            setShowSystemInstructions(false);
-            setPanelWidth(lastNormalWidth);
-          }}
+          className={`fixed inset-0 z-40 bg-black/40 backdrop-blur-[2.5px] ${
+            isClosingOverlay ? 'animate-fade-out' : 'animate-fade-in'
+          }`} 
+          onClick={handleCloseAll}
         />
       )}
 
       {/* Render selected Sidebar Drawer */}
       {showModelSelection ? (
         <ModelSelectionSidebar 
-          onClose={() => {
-            setShowModelSelection(false);
-            setPanelWidth(lastNormalWidth);
-          }} 
+          onClose={handleCloseModelSelection} 
           panelWidth={panelWidth}
           isResizing={isResizing}
           handleResizeStart={handleResizeStart}
+          isClosing={isClosingModelSelection}
         />
       ) : showSystemInstructions ? (
         <SystemInstructionsSidebar 
-          onClose={() => {
-            setShowSystemInstructions(false);
-            setPanelWidth(lastNormalWidth);
-          }} 
+          onClose={handleCloseSystemInstructions} 
           panelWidth={panelWidth}
           isResizing={isResizing}
           handleResizeStart={handleResizeStart}
+          isClosing={isClosingSystemInstructions}
         />
       ) : (
         /* Normal Settings View */
