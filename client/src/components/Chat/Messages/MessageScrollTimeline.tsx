@@ -197,11 +197,11 @@ export default function MessageScrollTimeline({
   return (
     <div
       ref={containerRef}
-      className="absolute right-3.5 top-8 bottom-8 z-[25] flex flex-col items-center justify-between select-none pointer-events-none"
+      className="absolute right-6 top-8 bottom-8 z-[25] flex flex-col items-center justify-between select-none pointer-events-none"
       style={{ width: '12px' }}
     >
       {/* Subtle Vertical Track Line */}
-      <div className="absolute top-0 bottom-0 w-[1px] bg-white/[0.08]" />
+      <div className="absolute top-0 bottom-0 w-[1px] bg-black/10 dark:bg-white/[0.08]" />
 
       {/* Render Dots */}
       {dots.map((dot) => {
@@ -237,10 +237,10 @@ export default function MessageScrollTimeline({
               className={cn(
                 'w-1.5 h-1.5 rounded-full transition-all duration-300 transform-gpu',
                 isActive
-                  ? 'bg-white scale-125 shadow-[0_0_8px_rgba(255,255,255,0.8)]'
+                  ? 'bg-black dark:bg-white scale-125 shadow-[0_0_8px_rgba(0,0,0,0.3)] dark:shadow-[0_0_8px_rgba(255,255,255,0.8)]'
                   : isHovered
                   ? 'bg-[#3b82f6] scale-150 shadow-[0_0_8px_rgba(59,130,246,0.8)]'
-                  : 'bg-white/20 hover:bg-white/40'
+                  : 'bg-black/35 dark:bg-white/20 hover:bg-black/60 dark:hover:bg-white/40'
               )}
             />
           </button>

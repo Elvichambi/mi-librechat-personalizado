@@ -262,39 +262,26 @@ const HoverButtons = ({
     try {
       await request.delete(`/api/messages/${conversation.conversationId}/${message.messageId}`);
       
-      // Optimistically update React Query messages list with cascade delete and tree re-linking
+      // Optimistically update React Query messages list with strict cascade deletion of all descendants
       queryClient.setQueryData<TMessage[]>([QueryKeys.messages, conversation.conversationId], (prev) => {
         if (!prev) return prev;
-        if (message.isCreatedByUser) {
-          // B is USER. Find all model children of B
-          const children = prev.filter((m) => m.parentMessageId === message.messageId);
-          const modelChildrenIds = children
-            .filter((m) => !m.isCreatedByUser)
-            .map((m) => m.messageId);
-          
-          const filtered = prev.filter(
-            (m) => m.messageId !== message.messageId && !modelChildrenIds.includes(m.messageId)
-          );
-          
-          return filtered.map((m) => {
-            if (m.parentMessageId === message.messageId) {
-              return { ...m, parentMessageId: message.parentMessageId };
+        
+        const idsToDelete = new Set<string>([message.messageId]);
+        let searchMore = true;
+        
+        while (searchMore) {
+          const sizeBefore = idsToDelete.size;
+          prev.forEach((m) => {
+            if (m.parentMessageId && idsToDelete.has(m.parentMessageId)) {
+              idsToDelete.add(m.messageId);
             }
-            if (modelChildrenIds.includes(m.parentMessageId ?? '')) {
-              return { ...m, parentMessageId: message.parentMessageId };
-            }
-            return m;
           });
-        } else {
-          // B is MODEL. Link direct children directly to B's parent
-          const filtered = prev.filter((m) => m.messageId !== message.messageId);
-          return filtered.map((m) => {
-            if (m.parentMessageId === message.messageId) {
-              return { ...m, parentMessageId: message.parentMessageId };
-            }
-            return m;
-          });
+          if (idsToDelete.size === sizeBefore) {
+            searchMore = false;
+          }
         }
+        
+        return prev.filter((m) => !idsToDelete.has(m.messageId));
       });
       
       showToast({
@@ -396,6 +383,14 @@ const HoverButtons = ({
           className="active"
         />
       )}
+
+      {/* Delete/Trash Button */}
+      <HoverButton
+        onClick={handleDelete}
+        title={localize('com_ui_delete') || 'Eliminar'}
+        icon={<Trash2 size="19" className="text-red-400 hover:text-red-500" />}
+        isLast={isLast}
+      />
     </div>
   );
 };
@@ -466,39 +461,26 @@ export const MessageActionsDropdown = memo(({
     try {
       await request.delete(`/api/messages/${conversation.conversationId}/${message.messageId}`);
       
-      // Optimistically update React Query messages list with cascade delete and tree re-linking
+      // Optimistically update React Query messages list with strict cascade deletion of all descendants
       queryClient.setQueryData<TMessage[]>([QueryKeys.messages, conversation.conversationId], (prev) => {
         if (!prev) return prev;
-        if (message.isCreatedByUser) {
-          // B is USER. Find all model children of B
-          const children = prev.filter((m) => m.parentMessageId === message.messageId);
-          const modelChildrenIds = children
-            .filter((m) => !m.isCreatedByUser)
-            .map((m) => m.messageId);
-          
-          const filtered = prev.filter(
-            (m) => m.messageId !== message.messageId && !modelChildrenIds.includes(m.messageId)
-          );
-          
-          return filtered.map((m) => {
-            if (m.parentMessageId === message.messageId) {
-              return { ...m, parentMessageId: message.parentMessageId };
+        
+        const idsToDelete = new Set<string>([message.messageId]);
+        let searchMore = true;
+        
+        while (searchMore) {
+          const sizeBefore = idsToDelete.size;
+          prev.forEach((m) => {
+            if (m.parentMessageId && idsToDelete.has(m.parentMessageId)) {
+              idsToDelete.add(m.messageId);
             }
-            if (modelChildrenIds.includes(m.parentMessageId ?? '')) {
-              return { ...m, parentMessageId: message.parentMessageId };
-            }
-            return m;
           });
-        } else {
-          // B is MODEL. Link direct children directly to B's parent
-          const filtered = prev.filter((m) => m.messageId !== message.messageId);
-          return filtered.map((m) => {
-            if (m.parentMessageId === message.messageId) {
-              return { ...m, parentMessageId: message.parentMessageId };
-            }
-            return m;
-          });
+          if (idsToDelete.size === sizeBefore) {
+            searchMore = false;
+          }
         }
+        
+        return prev.filter((m) => !idsToDelete.has(m.messageId));
       });
       
       showToast({
