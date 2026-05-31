@@ -101,8 +101,22 @@ export default function MessageScrollTimeline({
       });
     });
 
-    setDots(newDots);
-    setShowTimeline(newDots.length > 1);
+    setDots((prevDots) => {
+      const isSame =
+        prevDots.length === newDots.length &&
+        prevDots.every(
+          (d, i) =>
+            d.messageId === newDots[i].messageId &&
+            d.relativeTopPercent === newDots[i].relativeTopPercent &&
+            d.text === newDots[i].text
+        );
+      return isSame ? prevDots : newDots;
+    });
+
+    setShowTimeline((prev) => {
+      const nextVal = newDots.length > 1;
+      return prev === nextVal ? prev : nextVal;
+    });
   }, [scrollableRef, messages]);
 
   // Update active dot based on current scroll position
@@ -124,7 +138,7 @@ export default function MessageScrollTimeline({
       }
     }
 
-    setActiveMessageId(activeId);
+    setActiveMessageId((prev) => (prev === activeId ? prev : activeId));
   }, [scrollableRef, dots]);
 
   // Handle click on dot -> smooth scroll container to message element
@@ -181,7 +195,8 @@ export default function MessageScrollTimeline({
       mutationObserver.disconnect();
       scrollContainer.removeEventListener('scroll', handleScroll);
     };
-  }, [scrollableRef, messages, recalculatePositions, updateActiveDot]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scrollableRef, messages]);
 
   // Sync active dot whenever dots data is recalculated
   useEffect(() => {

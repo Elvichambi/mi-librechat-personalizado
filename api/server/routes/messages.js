@@ -426,8 +426,8 @@ router.delete('/:conversationId/:messageId', validateMessageReq, async (req, res
         }
       }
 
-      // Delete all messages and their descendants from MongoDB
-      await Message.deleteMany({ messageId: { $in: idsToDelete }, conversationId, user: req.user.id });
+      // Delete all messages and their descendants using LibreChat's native db wrapper
+      await db.deleteMessages({ messageId: { $in: idsToDelete }, conversationId, user: req.user.id });
     }
 
     res.status(204).send();
