@@ -946,7 +946,39 @@ class BaseClient {
     }
 
     orderedMessages.reverse();
-    return orderedMessages;
+
+    // Merge consecutive messages of the same role to prevent validation errors in Gemini/OpenAI
+    const mergedMessages = [];
+    for (const msg of orderedMessages) {
+      if (mergedMessages.length === 0) {
+        mergedMessages.push(msg);
+        continue;
+      }
+
+      const lastMsg = mergedMessages[mergedMessages.length - 1];
+      const currentRole = msg.role || (msg.isCreatedByUser ? 'user' : 'assistant');
+      const lastRole = lastMsg.role || (lastMsg.isCreatedByUser ? 'user' : 'assistant');
+
+      if (currentRole === lastRole && currentRole !== 'system') {
+        const mergedMsg = { ...lastMsg };
+        const text1 = mergedMsg.text || '';
+        const text2 = msg.text || '';
+        mergedMsg.text = text1 ? (text2 ? `${text1}\n\n${text2}` : text1) : text2;
+
+        if (Array.isArray(mergedMsg.content) && Array.isArray(msg.content)) {
+          mergedMsg.content = [...mergedMsg.content, ...msg.content];
+        } else if (mergedMsg.content || msg.content) {
+          const content1 = Array.isArray(mergedMsg.content) ? mergedMsg.content : (mergedMsg.content ? [{ type: 'text', text: mergedMsg.content }] : []);
+          const content2 = Array.isArray(msg.content) ? msg.content : (msg.content ? [{ type: 'text', text: msg.content }] : []);
+          mergedMsg.content = [...content1, ...content2];
+        }
+        mergedMessages[mergedMessages.length - 1] = mergedMsg;
+      } else {
+        mergedMessages.push(msg);
+      }
+    }
+
+    return mergedMessages;
   }
 
   /**

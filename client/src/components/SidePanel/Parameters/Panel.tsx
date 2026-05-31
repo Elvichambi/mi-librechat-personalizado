@@ -145,8 +145,8 @@ export default function Parameters() {
   }
 
   return (
-    <div className="h-auto max-w-full px-3 pb-3 pt-2">
-      <div className="grid grid-cols-2 gap-4">
+    <div className="h-auto max-w-full px-3.5 pb-4 pt-2">
+      <div className={storyLabUI ? "flex flex-col gap-5.5" : "grid grid-cols-2 gap-4"}>
         {' '}
         {/* This is the parent element containing all settings */}
         {/* Below is an example of an applied dynamic setting, each be contained by a div with the column span specified */}

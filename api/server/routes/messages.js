@@ -406,16 +406,38 @@ router.delete('/:conversationId/:messageId', validateMessageReq, async (req, res
     const mongoose = require('mongoose');
     const Message = mongoose.models.Message;
 
-    // Find B to get its parentMessageId
+    // Find B to get its parentMessageId and role (isCreatedByUser)
     const messageToDelete = await Message.findOne({ messageId, conversationId, user: req.user.id });
     if (messageToDelete) {
       const parentId = messageToDelete.parentMessageId;
 
-      // Update any message that has parentMessageId === messageId to B's parentMessageId
-      await Message.updateMany(
-        { parentMessageId: messageId, conversationId, user: req.user.id },
-        { $set: { parentMessageId: parentId } }
-      );
+      if (messageToDelete.isCreatedByUser) {
+        // B is a USER message. Find all its direct children (typically MODEL responses)
+        const children = await Message.find({ parentMessageId: messageId, conversationId, user: req.user.id });
+        
+        for (const child of children) {
+          if (!child.isCreatedByUser) {
+            // Child is a MODEL message. Cascade delete it, and link its children to B's parent (parentId)
+            await Message.updateMany(
+              { parentMessageId: child.messageId, conversationId, user: req.user.id },
+              { $set: { parentMessageId: parentId } }
+            );
+            await Message.deleteOne({ messageId: child.messageId, conversationId, user: req.user.id });
+          } else {
+            // If child is a USER message (unlikely but possible), link it directly to B's parent
+            await Message.updateMany(
+              { messageId: child.messageId, conversationId, user: req.user.id },
+              { $set: { parentMessageId: parentId } }
+            );
+          }
+        }
+      } else {
+        // B is a MODEL message. Link its children directly to B's parent
+        await Message.updateMany(
+          { parentMessageId: messageId, conversationId, user: req.user.id },
+          { $set: { parentMessageId: parentId } }
+        );
+      }
     }
 
     await db.deleteMessages({ messageId, conversationId, user: req.user.id });

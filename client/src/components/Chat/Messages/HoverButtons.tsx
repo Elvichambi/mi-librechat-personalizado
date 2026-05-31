@@ -262,19 +262,39 @@ const HoverButtons = ({
     try {
       await request.delete(`/api/messages/${conversation.conversationId}/${message.messageId}`);
       
-      // Optimistically update React Query messages list to re-link child messages to their grandparent
+      // Optimistically update React Query messages list with cascade delete and tree re-linking
       queryClient.setQueryData<TMessage[]>([QueryKeys.messages, conversation.conversationId], (prev) => {
         if (!prev) return prev;
-        const filtered = prev.filter((m) => m.messageId !== message.messageId);
-        return filtered.map((m) => {
-          if (m.parentMessageId === message.messageId) {
-            return {
-              ...m,
-              parentMessageId: message.parentMessageId,
-            };
-          }
-          return m;
-        });
+        if (message.isCreatedByUser) {
+          // B is USER. Find all model children of B
+          const children = prev.filter((m) => m.parentMessageId === message.messageId);
+          const modelChildrenIds = children
+            .filter((m) => !m.isCreatedByUser)
+            .map((m) => m.messageId);
+          
+          const filtered = prev.filter(
+            (m) => m.messageId !== message.messageId && !modelChildrenIds.includes(m.messageId)
+          );
+          
+          return filtered.map((m) => {
+            if (m.parentMessageId === message.messageId) {
+              return { ...m, parentMessageId: message.parentMessageId };
+            }
+            if (modelChildrenIds.includes(m.parentMessageId ?? '')) {
+              return { ...m, parentMessageId: message.parentMessageId };
+            }
+            return m;
+          });
+        } else {
+          // B is MODEL. Link direct children directly to B's parent
+          const filtered = prev.filter((m) => m.messageId !== message.messageId);
+          return filtered.map((m) => {
+            if (m.parentMessageId === message.messageId) {
+              return { ...m, parentMessageId: message.parentMessageId };
+            }
+            return m;
+          });
+        }
       });
       
       showToast({
@@ -446,18 +466,39 @@ export const MessageActionsDropdown = memo(({
     try {
       await request.delete(`/api/messages/${conversation.conversationId}/${message.messageId}`);
       
+      // Optimistically update React Query messages list with cascade delete and tree re-linking
       queryClient.setQueryData<TMessage[]>([QueryKeys.messages, conversation.conversationId], (prev) => {
         if (!prev) return prev;
-        const filtered = prev.filter((m) => m.messageId !== message.messageId);
-        return filtered.map((m) => {
-          if (m.parentMessageId === message.messageId) {
-            return {
-              ...m,
-              parentMessageId: message.parentMessageId,
-            };
-          }
-          return m;
-        });
+        if (message.isCreatedByUser) {
+          // B is USER. Find all model children of B
+          const children = prev.filter((m) => m.parentMessageId === message.messageId);
+          const modelChildrenIds = children
+            .filter((m) => !m.isCreatedByUser)
+            .map((m) => m.messageId);
+          
+          const filtered = prev.filter(
+            (m) => m.messageId !== message.messageId && !modelChildrenIds.includes(m.messageId)
+          );
+          
+          return filtered.map((m) => {
+            if (m.parentMessageId === message.messageId) {
+              return { ...m, parentMessageId: message.parentMessageId };
+            }
+            if (modelChildrenIds.includes(m.parentMessageId ?? '')) {
+              return { ...m, parentMessageId: message.parentMessageId };
+            }
+            return m;
+          });
+        } else {
+          // B is MODEL. Link direct children directly to B's parent
+          const filtered = prev.filter((m) => m.messageId !== message.messageId);
+          return filtered.map((m) => {
+            if (m.parentMessageId === message.messageId) {
+              return { ...m, parentMessageId: message.parentMessageId };
+            }
+            return m;
+          });
+        }
       });
       
       showToast({
