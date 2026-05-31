@@ -8,7 +8,7 @@ import MessageContent from '~/components/Chat/Messages/Content/MessageContent';
 import { useLocalize, useMessageActions, useContentMetadata } from '~/hooks';
 import PlaceholderRow from '~/components/Chat/Messages/ui/PlaceholderRow';
 import SiblingSwitch from '~/components/Chat/Messages/SiblingSwitch';
-import HoverButtons from '~/components/Chat/Messages/HoverButtons';
+import HoverButtons, { MessageActionsDropdown } from '~/components/Chat/Messages/HoverButtons';
 import MessageIcon from '~/components/Chat/Messages/MessageIcon';
 import SubRow from '~/components/Chat/Messages/SubRow';
 import { fontSizeAtom } from '~/store/fontSize';
@@ -190,7 +190,7 @@ const MessageRender = memo(function MessageRender({
         baseClasses.common,
         baseClasses.chat,
         conditionalClasses.focus,
-        'message-render',
+        'message-render dark:hover:bg-white/[0.015] hover:bg-black/[0.01] rounded-2xl p-3.5 transition-all duration-300',
       )}
     >
       {!hasParallelContent && (
@@ -214,6 +214,13 @@ const MessageRender = memo(function MessageRender({
             {messageLabel}
           </h2>
         )}
+
+        <MessageActionsDropdown
+          message={msg}
+          conversation={conversation ?? null}
+          latestMessageId={latestMessageId}
+          copyToClipboard={copyToClipboard}
+        />
 
         <div className="flex flex-col gap-1">
           <div className="flex min-h-[20px] max-w-full flex-grow flex-col gap-0">

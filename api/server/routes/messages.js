@@ -402,6 +402,22 @@ router.put('/:conversationId/:messageId/feedback', validateMessageReq, async (re
 router.delete('/:conversationId/:messageId', validateMessageReq, async (req, res) => {
   try {
     const { conversationId, messageId } = req.params;
+
+    const mongoose = require('mongoose');
+    const Message = mongoose.models.Message;
+
+    // Find B to get its parentMessageId
+    const messageToDelete = await Message.findOne({ messageId, conversationId, user: req.user.id });
+    if (messageToDelete) {
+      const parentId = messageToDelete.parentMessageId;
+
+      // Update any message that has parentMessageId === messageId to B's parentMessageId
+      await Message.updateMany(
+        { parentMessageId: messageId, conversationId, user: req.user.id },
+        { $set: { parentMessageId: parentId } }
+      );
+    }
+
     await db.deleteMessages({ messageId, conversationId, user: req.user.id });
     res.status(204).send();
   } catch (error) {

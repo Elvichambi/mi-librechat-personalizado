@@ -1,4 +1,5 @@
 import React, { useMemo, useState, useEffect, useCallback } from 'react';
+import { useRecoilValue } from 'recoil';
 import keyBy from 'lodash/keyBy';
 import { RotateCcw } from 'lucide-react';
 import {
@@ -16,11 +17,13 @@ import { useGetEndpointsQuery } from '~/data-provider';
 import { componentMapping } from './components';
 import { useChatContext } from '~/Providers';
 import { logger } from '~/utils';
+import store from '~/store';
 
 export default function Parameters() {
   const localize = useLocalize();
   const { conversation, setConversation } = useChatContext();
   const { setOption } = useSetIndexOptions();
+  const storyLabUI = useRecoilValue(store.storyLabUI);
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [preset, setPreset] = useState<TPreset | null>(null);
@@ -147,18 +150,30 @@ export default function Parameters() {
         {' '}
         {/* This is the parent element containing all settings */}
         {/* Below is an example of an applied dynamic setting, each be contained by a div with the column span specified */}
-        {parameters.map((setting) => {
-          const Component = componentMapping[setting.component];
-          if (!Component) {
-            return null;
-          }
-          const { key, default: defaultValue, ...rest } = setting;
+        {parameters
+          .filter((setting) => {
+            if (!storyLabUI) {
+              return true;
+            }
+            return (
+              setting.key !== 'promptPrefix' &&
+              setting.key !== 'chatGptLabel' &&
+              setting.key !== 'modelLabel' &&
+              setting.key !== 'system'
+            );
+          })
+          .map((setting) => {
+            const Component = componentMapping[setting.component];
+            if (!Component) {
+              return null;
+            }
+            const { key, default: defaultValue, ...rest } = setting;
 
-          if (key === 'region' && bedrockRegions.length) {
-            rest.options = bedrockRegions;
-          }
+            if (key === 'region' && bedrockRegions.length) {
+              rest.options = bedrockRegions;
+            }
 
-          return (
+            return (
             <Component
               key={key}
               settingKey={key}

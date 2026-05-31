@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useRecoilState, useRecoilValue } from 'recoil';
-import { ChevronLeft, ChevronRight, Search, Star, Key, CheckCircle, HelpCircle, Trash2, ChevronDown } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Search, Star, Key, CheckCircle, HelpCircle, Trash2, ChevronDown, ChevronUp, List, ArrowLeft, Save, Plus } from 'lucide-react';
 import { useSetIndexOptions } from '~/hooks/Conversations';
 import { useChatContext } from '~/Providers';
 import Parameters from '~/components/SidePanel/Parameters/Panel';
@@ -126,7 +126,9 @@ function ModelSelectionSidebar({ onClose, panelWidth, isResizing, handleResizeSt
   const localize = useLocalize();
   const { mappedEndpoints, selectedValues, handleSelectModel } = useModelSelectorContext();
   const { isFavoriteModel, toggleFavoriteModel } = useFavorites();
-  const [selectedTab, setSelectedTab] = useState('all');
+  const [selectedTab, setSelectedTab] = useState(() => {
+    return localStorage.getItem('storylab:selected-model-tab') || 'all';
+  });
   const [searchQuery, setSearchQuery] = useState('');
 
   const allModelCards = useMemo(() => {
@@ -171,12 +173,13 @@ function ModelSelectionSidebar({ onClose, panelWidth, isResizing, handleResizeSt
 
   return (
     <div 
-      className={`flex h-full flex-shrink-0 flex-col border-l border-border-light bg-surface-primary z-50 fixed right-0 top-0 shadow-2xl ${
+      className={`flex h-full flex-shrink-0 flex-col border-l border-border-light bg-surface-primary z-[9999] fixed right-0 top-0 shadow-2xl ${
         isClosing ? 'animate-slide-out-right' : 'animate-slide-in-right'
       }`}
       style={{
         width: panelWidth,
         transition: isResizing ? 'none' : 'width 0.15s ease',
+        zIndex: 9999,
       }}
     >
       {/* Resizable handle */}
@@ -217,7 +220,10 @@ function ModelSelectionSidebar({ onClose, panelWidth, isResizing, handleResizeSt
       {/* Wrapped Tab pills - Google AI Studio style */}
       <div className="flex flex-wrap gap-1.5 px-4 py-2.5 border-b border-border-light">
         <button
-          onClick={() => setSelectedTab('all')}
+          onClick={() => {
+            setSelectedTab('all');
+            localStorage.setItem('storylab:selected-model-tab', 'all');
+          }}
           className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider whitespace-nowrap transition-all duration-200 border ${
             selectedTab === 'all'
               ? 'bg-blue-600 text-white border-blue-600'
@@ -229,7 +235,10 @@ function ModelSelectionSidebar({ onClose, panelWidth, isResizing, handleResizeSt
         {mappedEndpoints?.map((ep) => (
           <button
             key={ep.value}
-            onClick={() => setSelectedTab(ep.value)}
+            onClick={() => {
+              setSelectedTab(ep.value);
+              localStorage.setItem('storylab:selected-model-tab', ep.value);
+            }}
             className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider whitespace-nowrap transition-all duration-200 border ${
               selectedTab === ep.value
                 ? 'bg-blue-600 text-white border-blue-600'
@@ -277,21 +286,78 @@ function ModelSelectionSidebar({ onClose, panelWidth, isResizing, handleResizeSt
   );
 }
 
+interface InstructionTemplate {
+  id: string;
+  title: string;
+  description: string;
+  text: string;
+}
+
+const defaultTemplates: InstructionTemplate[] = [
+  {
+    id: 'default-general',
+    title: 'General Assistant',
+    description: 'Default multipurpose assistant for general queries',
+    text: 'You are a helpful, polite, and honest assistant. Provide clear, accurate, and concise answers.'
+  },
+  {
+    id: 'creative-writer',
+    title: 'Creative Writer',
+    description: 'Specialized in storytelling, content creation, and copywriting',
+    text: 'You are a professional creative writer and editor. Your style is engaging, descriptive, and rich. Focus on creating high-quality prose, brainstorm vivid ideas, and maintain a compelling narrative flow.'
+  },
+  {
+    id: 'expert-coder',
+    title: 'Expert Coder',
+    description: 'Expert in writing clean, optimized, and documented code',
+    text: 'You are an expert senior software engineer. Focus on writing clean, robust, and optimized code following industry best practices. Provide explanations for architectural choices, avoid placeholders, and ensure code is fully functional.'
+  }
+];
+
 function SystemInstructionsSidebar({ onClose, panelWidth, isResizing, handleResizeStart, isClosing = false }: SelectionSidebarProps) {
   const { conversation } = useChatContext();
   const { setOption } = useSetIndexOptions();
 
+  // State controls for views
+  const [showListView, setShowListView] = useState(false);
+  const [showSaveMetadata, setShowSaveMetadata] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({});
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
+  // Ref for dropdown positioning (fixed position to avoid clipping by parent overflow)
+  const dropdownAreaRef = React.useRef<HTMLDivElement>(null);
+  const [dropdownPos, setDropdownPos] = useState<{top: number; left: number; width: number} | null>(null);
+
+  useEffect(() => {
+    if (isDropdownOpen && dropdownAreaRef.current) {
+      const rect = dropdownAreaRef.current.getBoundingClientRect();
+      setDropdownPos({ top: rect.bottom + 2, left: rect.left, width: rect.width });
+    } else {
+      setDropdownPos(null);
+    }
+  }, [isDropdownOpen]);
+
   // Load instructions list from localStorage
-  const [instructions, setInstructions] = useState<Array<{ id: string; title: string; text: string }>>(() => {
+  const [instructions, setInstructions] = useState<InstructionTemplate[]>(() => {
     const saved = localStorage.getItem('storylab:system-instructions');
     if (saved) {
       try {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.map(item => ({
+            id: item.id || String(Date.now()),
+            title: item.title || 'Untitled Prompt',
+            description: item.description || '',
+            text: item.text || ''
+          }));
+        }
       } catch {
         // Fail-safe
       }
     }
-    return [{ id: 'default', title: 'Untitled', text: '' }];
+    return defaultTemplates;
   });
 
   const {
@@ -301,89 +367,234 @@ function SystemInstructionsSidebar({ onClose, panelWidth, isResizing, handleResi
 
   const systemText = promptPrefix || system || '';
 
-  // Active selected ID in selector dropdown
+  // Active selected ID in templates dropdown (initializes as 'empty' so it starts empty/blank by default)
   const [selectedId, setSelectedId] = useState<string>(() => {
+    if (!systemText) {
+      return 'empty';
+    }
     const found = instructions.find(item => item.text === systemText);
-    return found ? found.id : (instructions[0]?.id || 'default');
+    return found ? found.id : 'custom';
   });
 
-  // Save instructions helper
-  const saveToLocalStorage = (list: Array<{ id: string; title: string; text: string }>) => {
-    setInstructions(list);
-    localStorage.setItem('storylab:system-instructions', JSON.stringify(list));
-  };
+  // Local draft inputs
+  const [tempTitle, setTempTitle] = useState('');
+  const [tempDescription, setTempDescription] = useState('');
+  const [tempText, setTempText] = useState('');
 
-  const handleCreateNew = () => {
-    const newId = String(Date.now());
-    const newItem = { id: newId, title: 'Untitled', text: '' };
-    const updated = [newItem, ...instructions];
-    saveToLocalStorage(updated);
-    setSelectedId(newId);
+  // Ref to track whether the title was typed by the user (vs set programmatically)
+  const userEditedTitleRef = React.useRef(false);
 
-    // Clear active system instruction in LibreChat conversation
-    setOption('promptPrefix')('');
-    setOption('system')('');
-  };
-
-  const handleDeleteActive = () => {
-    if (instructions.length <= 1) {
-      const updated = [{ id: 'default', title: 'Untitled', text: '' }];
-      saveToLocalStorage(updated);
-      setSelectedId('default');
+  // Sync inputs when selectedId changes or instructions load
+  // AND sync the prompt to the active conversation so the chat actually uses it
+  useEffect(() => {
+    userEditedTitleRef.current = false; // Reset on programmatic changes
+    if (selectedId === 'custom') {
+      setTempTitle('Custom Instructions');
+      setTempDescription('');
+      setTempText(systemText);
+      // systemText is already the active prompt, no need to re-sync
+    } else if (selectedId === 'create-new' || selectedId === 'empty') {
+      setTempTitle('');
+      setTempDescription('');
+      setTempText('');
+      // Clear prompt from active conversation
       setOption('promptPrefix')('');
       setOption('system')('');
+    } else {
+      const found = instructions.find(item => item.id === selectedId);
+      if (found) {
+        setTempTitle(found.title);
+        setTempDescription(found.description || '');
+        setTempText(found.text);
+        // Apply selected template to the active conversation
+        setOption('promptPrefix')(found.text);
+        setOption('system')(found.text);
+      }
+    }
+  }, [selectedId, instructions]);
+
+  // Auto-save preset to localStorage when the USER manually types a title and there is prompt text
+  // Uses a debounce so it doesn't fire on every keystroke
+  // Only triggers when userEditedTitleRef is true (user typed it, not set by useEffect)
+  useEffect(() => {
+    if (!userEditedTitleRef.current) {
+      return; // Skip if title was set programmatically (e.g. selecting a template)
+    }
+    if (!tempTitle.trim() || !tempText.trim()) {
+      return; // Don't auto-save if title or text is empty
+    }
+    const debounceTimer = setTimeout(() => {
+      let updatedList: InstructionTemplate[];
+      let newId = selectedId;
+
+      if (selectedId === 'custom' || selectedId === 'create-new' || selectedId === 'empty') {
+        newId = String(Date.now());
+        const newPreset: InstructionTemplate = {
+          id: newId,
+          title: tempTitle.trim(),
+          description: tempDescription.trim(),
+          text: tempText
+        };
+        updatedList = [newPreset, ...instructions];
+      } else {
+        updatedList = instructions.map(item => {
+          if (item.id === selectedId) {
+            return {
+              ...item,
+              title: tempTitle.trim(),
+              description: tempDescription.trim(),
+              text: tempText
+            };
+          }
+          return item;
+        });
+      }
+
+      setInstructions(updatedList);
+      localStorage.setItem('storylab:system-instructions', JSON.stringify(updatedList));
+      setSelectedId(newId);
+      userEditedTitleRef.current = false; // Reset after save
+    }, 800); // 800ms debounce
+
+    return () => clearTimeout(debounceTimer);
+  }, [tempTitle]);
+
+  const handleCreateNew = () => {
+    setSelectedId('create-new');
+    setTempTitle('');
+    setTempDescription('');
+    setTempText('');
+    setOption('promptPrefix')('');
+    setOption('system')('');
+    setShowListView(false);
+  };
+
+  // Delete with confirmation - opens the confirm dialog
+  const handleRequestDelete = (idToDelete?: string) => {
+    const targetId = idToDelete || selectedId;
+    if (targetId === 'custom' || targetId === 'create-new' || targetId === 'empty') {
+      // For drafts, just clear directly (no saved data to lose)
+      setTempTitle('');
+      setTempDescription('');
+      setTempText('');
+      setOption('promptPrefix')('');
+      setOption('system')('');
+      setSelectedId('empty');
       return;
     }
+    setConfirmDeleteId(targetId);
+  };
 
-    const updated = instructions.filter(item => item.id !== selectedId);
-    saveToLocalStorage(updated);
-    
-    // Select the first remaining item
-    const nextItem = updated[0];
-    setSelectedId(nextItem.id);
-    setOption('promptPrefix')(nextItem.text);
-    setOption('system')(nextItem.text);
+  // Actually perform the delete after confirmation
+  const handleConfirmDelete = () => {
+    if (!confirmDeleteId) return;
+
+    let updated: InstructionTemplate[];
+    if (instructions.length <= 1) {
+      updated = [{ id: 'default-general', title: 'General Assistant', description: 'Default multipurpose assistant', text: 'You are a helpful assistant.' }];
+    } else {
+      updated = instructions.filter(item => item.id !== confirmDeleteId);
+    }
+    setInstructions(updated);
+    localStorage.setItem('storylab:system-instructions', JSON.stringify(updated));
+
+    // If we deleted the currently active one, reset to empty
+    if (selectedId === confirmDeleteId) {
+      setSelectedId('empty');
+      setTempTitle('');
+      setTempDescription('');
+      setTempText('');
+      setOption('promptPrefix')('');
+      setOption('system')('');
+    }
+    setConfirmDeleteId(null);
   };
 
   const handleTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = e.target.value;
-    const updated = instructions.map(item => {
-      if (item.id === selectedId) {
-        return { ...item, title: val };
-      }
-      return item;
-    });
-    saveToLocalStorage(updated);
+    userEditedTitleRef.current = true; // Mark as user-typed
+    setTempTitle(e.target.value);
+  };
+
+  const handleDescriptionChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setTempDescription(e.target.value);
   };
 
   const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const val = e.target.value;
-    const updated = instructions.map(item => {
-      if (item.id === selectedId) {
-        return { ...item, text: val };
-      }
-      return item;
-    });
-    saveToLocalStorage(updated);
-
-    // Sync in real time with LibreChat active conversation
+    setTempText(val);
+    // Sync in real time with LibreChat active conversation so user can test immediately
     setOption('promptPrefix')(val);
     setOption('system')(val);
   };
 
-  // Find the active instruction item
-  const activeItem = useMemo(() => {
-    return instructions.find(item => item.id === selectedId) || { id: 'default', title: 'Untitled', text: '' };
-  }, [instructions, selectedId]);
+  const handleSavePreset = () => {
+    if (!tempTitle.trim()) {
+      alert('Por favor, ingresa un título para guardar esta plantilla.');
+      return;
+    }
+
+    let updatedList: InstructionTemplate[];
+    let newId = selectedId;
+
+    if (selectedId === 'custom' || selectedId === 'create-new' || selectedId === 'empty') {
+      newId = String(Date.now());
+      const newPreset: InstructionTemplate = {
+        id: newId,
+        title: tempTitle.trim(),
+        description: tempDescription.trim(),
+        text: tempText
+      };
+      updatedList = [newPreset, ...instructions];
+    } else {
+      updatedList = instructions.map(item => {
+        if (item.id === selectedId) {
+          return {
+            ...item,
+            title: tempTitle.trim(),
+            description: tempDescription.trim(),
+            text: tempText
+          };
+        }
+        return item;
+      });
+    }
+
+    setInstructions(updatedList);
+    localStorage.setItem('storylab:system-instructions', JSON.stringify(updatedList));
+    setSelectedId(newId);
+    setShowSaveMetadata(false);
+  };
+
+  const toggleExpand = (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    setExpandedIds(prev => ({
+      ...prev,
+      [id]: !prev[id]
+    }));
+  };
+
+  const filteredInstructions = useMemo(() => {
+    if (!searchQuery) {
+      return instructions;
+    }
+    const q = searchQuery.toLowerCase();
+    return instructions.filter(
+      item =>
+        item.title.toLowerCase().includes(q) ||
+        item.description.toLowerCase().includes(q) ||
+        item.text.toLowerCase().includes(q)
+    );
+  }, [instructions, searchQuery]);
 
   return (
     <div 
-      className={`flex h-full flex-shrink-0 flex-col border-l border-border-light bg-surface-primary z-50 fixed right-0 top-0 shadow-2xl ${
+      className={`flex h-full flex-shrink-0 flex-col border-l border-border-light bg-surface-primary dark:bg-[#131314] z-[9999] fixed right-0 top-0 shadow-2xl ${
         isClosing ? 'animate-slide-out-right' : 'animate-slide-in-right'
       }`}
       style={{
         width: panelWidth,
         transition: isResizing ? 'none' : 'width 0.15s ease',
+        zIndex: 9999,
       }}
     >
       {/* Resizable handle */}
@@ -394,91 +605,357 @@ function SystemInstructionsSidebar({ onClose, panelWidth, isResizing, handleResi
         onMouseDown={handleResizeStart}
       />
 
-      {/* Header */}
-      <div className="flex items-center justify-between border-b border-border-light px-4 py-3.5 select-none">
-        <h2 className="text-sm font-bold text-text-primary uppercase tracking-wider">System instructions</h2>
-        <button
-          onClick={onClose}
-          className="flex h-7 w-7 items-center justify-center rounded-lg border border-border-light text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
-          aria-label="Close"
-          title="Close instructions"
-        >
-          <ChevronRight className="h-4 w-4" />
-        </button>
-      </div>
-
-      <div className="flex-grow p-5 flex flex-col gap-4 min-h-0 select-none">
-        {/* Selector Dropdown / Select box */}
-        <div className="relative">
-          <label className="text-[10px] font-bold text-text-tertiary uppercase tracking-wider block mb-1">Select Instruction Template</label>
-          <div className="relative">
-            <select
-              value={selectedId}
-              onChange={(e) => {
-                const id = e.target.value;
-                if (id === 'create-new') {
-                  handleCreateNew();
-                  return;
-                }
-                setSelectedId(id);
-                const found = instructions.find(item => item.id === id);
-                if (found) {
-                  setOption('promptPrefix')(found.text);
-                  setOption('system')(found.text);
-                }
-              }}
-              className="w-full pl-3 pr-10 py-2 text-xs font-semibold rounded-xl border border-border-light bg-surface-secondary text-text-primary focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 appearance-none cursor-pointer"
+      {/* VIEW A: Premium List View */}
+      {showListView ? (
+        <div className="flex flex-col h-full min-h-0">
+          {/* Header */}
+          <div className="flex items-center gap-3 border-b border-border-light px-4 py-3.5">
+            <button
+              onClick={() => setShowListView(false)}
+              className="flex h-7 w-7 items-center justify-center rounded-lg border border-border-light text-text-secondary hover:bg-surface-hover hover:text-text-primary transition-all shrink-0"
+              aria-label="Back to instructions editor"
+              title="Back"
             >
-              {instructions.map(item => (
-                <option key={item.id} value={item.id}>
-                  {item.title || 'Untitled'}
-                </option>
-              ))}
-              <option value="create-new" className="text-blue-500 font-bold border-t border-border-light">+ Create new instruction</option>
-            </select>
-            <ChevronDown className="absolute right-3 top-2 h-4 w-4 text-text-tertiary pointer-events-none" />
+              <ArrowLeft className="h-4 w-4" />
+            </button>
+            <h2 className="text-sm font-bold text-text-primary uppercase tracking-wider truncate">Select Prompt Template</h2>
+          </div>
+
+          {/* Search box */}
+          <div className="px-4 pt-3 pb-1.5 shrink-0">
+            <div className="relative flex items-center">
+              <Search className="absolute left-3 h-4 w-4 text-text-tertiary" />
+              <input
+                type="text"
+                placeholder="Search templates..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-9 pr-4 py-2 text-xs rounded-xl border border-border-light bg-surface-secondary text-text-primary focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              />
+            </div>
+          </div>
+
+          {/* Scrollable Templates List */}
+          <div className="flex-grow overflow-y-auto p-4 flex flex-col gap-2.5 min-h-0">
+            {filteredInstructions.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-10 text-center text-text-tertiary">
+                <HelpCircle className="h-10 w-10 mb-2 opacity-50" />
+                <p className="text-xs">No matching templates found</p>
+              </div>
+            ) : (
+              filteredInstructions.map(item => {
+                const isExpanded = !!expandedIds[item.id];
+                return (
+                  <div
+                    key={item.id}
+                    className={`w-full text-left p-3.5 rounded-xl border transition-all flex flex-col gap-1.5 cursor-pointer ${
+                      selectedId === item.id
+                        ? 'border-border-medium bg-surface-hover shadow-sm'
+                        : 'border-border-light bg-surface-secondary hover:bg-surface-hover hover:border-border-medium'
+                    }`}
+                    onClick={() => {
+                      setSelectedId(item.id);
+                      setShowListView(false);
+                    }}
+                  >
+                    <div className="flex items-center justify-between w-full">
+                      <span className="font-bold text-xs text-text-primary">{item.title || 'Untitled Prompt'}</span>
+                      <div className="flex items-center gap-1.5">
+                        {item.text && (
+                          <span
+                            onClick={(e) => toggleExpand(e, item.id)}
+                            className="text-[10px] text-text-tertiary hover:text-text-primary shrink-0 font-medium px-2 py-0.5 rounded hover:bg-surface-tertiary select-none flex items-center gap-0.5 transition-colors"
+                          >
+                            <span>{isExpanded ? 'Hide' : 'Show'}</span>
+                            {isExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                          </span>
+                        )}
+                        {/* Delete button for each template */}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleRequestDelete(item.id);
+                          }}
+                          className="flex h-6 w-6 items-center justify-center rounded-lg text-text-tertiary hover:text-red-400 hover:bg-red-500/10 transition-all shrink-0"
+                          aria-label={`Delete ${item.title}`}
+                          title="Delete template"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                        {selectedId === item.id && (
+                          <CheckCircle className="h-4 w-4 text-text-secondary shrink-0" />
+                        )}
+                      </div>
+                    </div>
+                    {item.description && (
+                      <span className="text-[10px] text-text-secondary leading-relaxed line-clamp-2">{item.description}</span>
+                    )}
+                    {isExpanded && item.text && (
+                      <pre className="text-xs font-sans text-text-secondary whitespace-pre-wrap break-all bg-surface-primary/75 p-3.5 rounded-xl border border-border-light/50 border-l-4 border-l-border-medium mt-1 max-h-36 overflow-y-auto w-full leading-relaxed select-text cursor-text">
+                        {item.text}
+                      </pre>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          {/* Footer Action */}
+          <div className="p-4 border-t border-border-light bg-surface-secondary">
+            <button
+              type="button"
+              onClick={handleCreateNew}
+              className="w-full py-2.5 rounded-xl text-xs font-bold bg-surface-tertiary text-text-primary hover:bg-surface-hover transition-all text-center border border-border-light"
+            >
+              + Create new instruction
+            </button>
           </div>
         </div>
-
-        {/* Title Field with Trash Can */}
-        <div className="flex items-center gap-3">
-          <div className="flex-grow min-w-0">
-            <label className="text-[10px] font-bold text-text-tertiary uppercase tracking-wider block mb-1">Instruction Title</label>
-            <input
-              type="text"
-              placeholder="Untitled"
-              value={activeItem.title}
-              onChange={handleTitleChange}
-              className="w-full px-3 py-1.5 text-xs font-semibold rounded-xl border border-border-light bg-surface-secondary text-text-primary focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-            />
+      ) : (
+        /* VIEW B: Cozy instructions textarea editor view */
+        <div className="flex flex-col h-full min-h-0 relative">
+          {/* Header */}
+          <div className="flex items-center justify-between border-b border-border-light px-4 py-3.5">
+            <h2 className="text-sm font-bold text-text-primary uppercase tracking-wider">System instructions</h2>
+            <button
+              onClick={onClose}
+              className="flex h-7 w-7 items-center justify-center rounded-lg border border-border-light text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
+              aria-label="Close"
+              title="Close instructions"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </button>
           </div>
-          <button
-            onClick={handleDeleteActive}
-            className="flex h-8 w-8 mt-4.5 items-center justify-center rounded-xl border border-red-500/30 bg-red-500/10 text-red-500 transition-all hover:bg-red-500/20 active:scale-95 shrink-0"
-            aria-label="Delete instruction"
-            title="Delete instruction"
-            style={{ marginTop: '18px' }}
-          >
-            <Trash2 className="h-4 w-4" />
-          </button>
+
+          <div className="flex-grow px-4 py-3 flex flex-col gap-3 min-h-0">
+            {/* Custom Dropdown Selector & List Button — AI Studio style */}
+            <div ref={dropdownAreaRef}>
+              <div className="flex gap-2">
+                <div className="flex-grow min-w-0">
+                  <button
+                    type="button"
+                    onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                    className="w-full pl-4 pr-10 py-2 text-[14px] font-normal text-left rounded-full border border-[#444] bg-transparent text-text-primary focus:outline-none flex items-center cursor-pointer transition-all hover:bg-white/[0.04] relative"
+                  >
+                    <span className="truncate flex-grow">
+                      {selectedId === 'empty' || selectedId === 'create-new'
+                        ? '+ Create new instruction'
+                        : selectedId === 'custom'
+                        ? 'Custom Instructions'
+                        : instructions.find(item => item.id === selectedId)?.title || 'Untitled instruction'}
+                    </span>
+                    <ChevronDown className={`absolute right-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-text-tertiary shrink-0 transition-transform duration-200 ${isDropdownOpen ? 'rotate-180' : ''}`} />
+                  </button>
+                </div>
+
+                {/* List View Toggle Button */}
+                <button
+                  type="button"
+                  onClick={() => setShowListView(true)}
+                  className="flex h-9 w-9 items-center justify-center rounded-full border border-[#444] bg-transparent text-text-secondary hover:bg-white/[0.04] hover:text-text-primary transition-all shrink-0"
+                  aria-label="View template lists with descriptions"
+                  title="View list with descriptions"
+                >
+                  <List className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Dropdown popup — fixed position to avoid clipping */}
+            {isDropdownOpen && dropdownPos && (
+              <>
+                <div className="fixed inset-0 z-[9998] bg-transparent" onClick={() => setIsDropdownOpen(false)} />
+                
+                <div 
+                  className="fixed z-[9999] rounded-md bg-[#1e1e20] border border-[#3c4043]/50 shadow-[0_8px_30px_rgba(0,0,0,0.6)] py-1.5 flex flex-col"
+                  style={{ top: dropdownPos.top, left: dropdownPos.left, width: dropdownPos.width }}
+                >
+                  {/* Create New — always visible at top like AI Studio */}
+                  <div className="px-1.5 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleCreateNew();
+                        setIsDropdownOpen(false);
+                      }}
+                      className="w-full text-left px-3.5 py-2 text-[14px] text-text-primary hover:bg-white/[0.10] font-normal transition-colors flex items-center gap-2 rounded-md shrink-0"
+                    >
+                      <Plus className="h-4 w-4 text-text-tertiary shrink-0" />
+                      <span>+ Create new instruction</span>
+                    </button>
+                  </div>
+
+                  {/* Scrollable list with visible scrollbar */}
+                  <div className="max-h-[50vh] overflow-y-auto flex flex-col px-1.5 custom-scrollbar" style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(255, 255, 255, 0.16) transparent' }}>
+                    {instructions.map(item => {
+                      const isSelected = selectedId === item.id;
+                      return (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedId(item.id);
+                            setIsDropdownOpen(false);
+                          }}
+                          className={`w-full text-left px-3.5 py-2 text-[14px] transition-colors truncate rounded-md shrink-0 ${
+                            isSelected 
+                              ? 'bg-white/[0.16] text-white font-semibold' 
+                              : 'text-[#ccc] hover:text-white hover:bg-white/[0.08] font-normal'
+                          }`}
+                        >
+                          {item.title || 'Untitled'}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* Title Input & Action Row */}
+            <div className="flex items-center gap-2">
+              <div className="flex-grow min-w-0">
+                <input
+                  type="text"
+                  placeholder="Title"
+                  value={tempTitle}
+                  onChange={handleTitleChange}
+                  className="w-full px-3.5 py-1.5 text-xs font-semibold rounded-md border border-border-light bg-surface-secondary dark:bg-[#1a1a1c] text-text-primary focus:border-white/60 focus:outline-none focus:ring-1 focus:ring-white/60"
+                />
+              </div>
+              
+              {/* Trash/Delete Button (with confirmation) */}
+              <button
+                type="button"
+                onClick={() => handleRequestDelete()}
+                className="flex h-[28px] w-[28px] items-center justify-center rounded-md border border-red-500/20 bg-red-500/5 text-red-500 hover:bg-red-500/10 transition-all shrink-0"
+                aria-label="Delete active template"
+                title="Delete active template"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+
+              {/* Save Button */}
+              <button
+                type="button"
+                onClick={() => setShowSaveMetadata(true)}
+                className="flex h-[28px] w-[28px] items-center justify-center rounded-md border border-blue-500/20 bg-blue-500/5 text-blue-500 hover:bg-blue-500/10 transition-all shrink-0"
+                aria-label="Save template details"
+                title="Save details"
+              >
+                <Save className="h-3.5 w-3.5" />
+              </button>
+            </div>
+
+            {/* Cozy TextArea input space */}
+            <div className="flex-grow flex flex-col gap-1.5 min-h-0">
+              <textarea
+                className="w-full flex-grow resize-none rounded-md border border-border-medium bg-surface-secondary dark:bg-[#131314] p-3.5 text-[15px] text-text-primary leading-relaxed focus:border-white/60 focus:outline-none focus:ring-1 focus:ring-white/60"
+                placeholder="Optional tone and style instructions for the model"
+                value={tempText}
+                onChange={handleTextChange}
+                autoFocus
+              />
+            </div>
+
+            {/* Bottom Footer Note */}
+            <div className="text-center py-1">
+              <span className="text-[10px] text-text-tertiary">Instructions are saved in local storage.</span>
+            </div>
+          </div>
+
+          {/* Premium Popover slide-up card to edit Title + Description */}
+          {showSaveMetadata && (
+            <>
+              {/* Dark backdrop overlay inside the sidebar context (without blur to prevent hardware-accelerated stacking bugs) */}
+              <div 
+                className="absolute inset-0 z-30 bg-black/60 animate-fade-in" 
+                onClick={() => setShowSaveMetadata(false)} 
+              />
+              
+              {/* Slide up dialog card */}
+              <div className="absolute inset-x-0 bottom-0 z-50 bg-surface-primary dark:bg-[#131314] border-t border-border-light shadow-2xl p-4 flex flex-col gap-3.5 animate-slide-in-up rounded-t-xl border border-border-medium/20">
+                <div className="flex items-center justify-between border-b border-border-light pb-2">
+                  <h3 className="text-xs font-bold text-text-primary uppercase tracking-wider">Save Instruction Preset</h3>
+                </div>
+                
+                <div>
+                  <label className="text-[10px] font-bold text-text-tertiary uppercase tracking-wider block mb-1">Instruction Title</label>
+                  <input
+                    type="text"
+                    placeholder="Untitled Prompt"
+                    value={tempTitle}
+                    onChange={handleTitleChange}
+                    className="w-full px-3.5 py-2 text-xs font-semibold rounded-md border border-border-light bg-surface-secondary dark:bg-[#1a1a1c] text-text-primary focus:border-white/60 focus:outline-none focus:ring-1 focus:ring-white/60"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-bold text-text-tertiary uppercase tracking-wider block mb-1">Instruction Description</label>
+                  <input
+                    type="text"
+                    placeholder="Brief description of this instruction's purpose"
+                    value={tempDescription}
+                    onChange={handleDescriptionChange}
+                    className="w-full px-3.5 py-2 text-xs font-semibold rounded-md border border-border-light bg-surface-secondary dark:bg-[#1a1a1c] text-text-primary focus:border-white/60 focus:outline-none focus:ring-1 focus:ring-white/60"
+                  />
+                </div>
+
+                <div className="flex gap-2.5 mt-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowSaveMetadata(false)}
+                    className="flex-1 py-2 rounded-md text-xs font-bold border border-border-light bg-surface-secondary text-text-secondary hover:bg-surface-hover transition-all"
+                  >
+                    Close
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSavePreset}
+                    className="flex-1 py-2 rounded-md text-xs font-bold bg-blue-600 text-white hover:bg-blue-700 transition-all shadow-md shadow-blue-500/20"
+                  >
+                    Save Preset
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
         </div>
+      )}
 
-        {/* Massive comfortable input space */}
-        <div className="flex-grow flex flex-col gap-1.5 min-h-0">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-bold text-text-tertiary uppercase tracking-wider">Instructions</span>
-            <span className="text-[10px] text-text-tertiary">Instructions are saved in local storage</span>
-          </div>
-          
-          <textarea
-            className="w-full flex-grow resize-none rounded-2xl border border-border-medium bg-surface-secondary p-5 text-sm text-text-primary leading-relaxed focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-            placeholder="Optional tone and style instructions for the model"
-            value={activeItem.text}
-            onChange={handleTextChange}
-            autoFocus
+      {/* Delete Confirmation Dialog — rendered at sidebar level so it works in BOTH list view and editor view */}
+      {confirmDeleteId && (
+        <>
+          <div 
+            className="fixed inset-0 z-[9999] bg-black/60 animate-fade-in" 
+            onClick={() => setConfirmDeleteId(null)} 
           />
-        </div>
-      </div>
+          <div className="fixed inset-0 z-[10000] flex items-center justify-center p-6">
+            <div className="bg-surface-primary rounded-2xl shadow-2xl p-6 max-w-xs w-full border border-border-medium animate-slide-in-up">
+              <h3 className="text-sm font-bold text-text-primary mb-1.5">Delete system instruction?</h3>
+              <p className="text-xs text-text-secondary mb-5">This action cannot be undone.</p>
+              <div className="flex justify-end gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setConfirmDeleteId(null)}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-text-secondary hover:bg-surface-hover transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmDelete}
+                  className="px-4 py-2 rounded-xl text-xs font-bold bg-surface-tertiary text-text-primary hover:bg-surface-hover transition-all border border-border-light"
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -716,8 +1193,8 @@ function RunSettingsContent({ setCollapsed }: { setCollapsed: (val: boolean) => 
             <div 
               onClick={() => {
                 setLastNormalWidth(panelWidth);
-                if (panelWidth < 480) {
-                  setPanelWidth(480);
+                if (panelWidth < 540) {
+                  setPanelWidth(540);
                 }
                 setShowSystemInstructions(true);
               }}

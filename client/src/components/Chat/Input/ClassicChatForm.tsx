@@ -311,11 +311,6 @@ const ChatForm = memo(function ChatForm({
                 >
                   <TextareaAutosize
                     {...registerProps}
-                    className={cn(
-                      'm-0 w-full resize-none border-0 bg-transparent py-[10px] pr-10 focus:ring-0 focus-visible:ring-0',
-                      'dark:bg-transparent md:py-3.5',
-                      'pl-3 md:pl-4',
-                    )}
                     placeholder={isFrozen ? '❄️ Chat congelado (Descongélalo en las opciones para editar)' : ''}
                     ref={(e) => {
                       ref(e);
@@ -338,6 +333,9 @@ const ChatForm = memo(function ChatForm({
                     onClick={handleFocusOrClick}
                     style={{ height: 44, overflowY: 'auto' }}
                     className={cn(
+                      'm-0 w-full resize-none border-0 bg-transparent py-[10px] pr-10 focus:ring-0 focus-visible:ring-0',
+                      'dark:bg-transparent md:py-3.5',
+                      'pl-3 md:pl-4',
                       baseClasses,
                       removeFocusRings,
                       'scrollbar-hover transition-[max-height] duration-200 disabled:cursor-not-allowed',

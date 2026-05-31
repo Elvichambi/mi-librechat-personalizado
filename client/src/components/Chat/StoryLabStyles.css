@@ -259,4 +259,20 @@
   }
 }
 
+/* --- Slide in up for custom dropdowns --- */
+.animate-slide-in-up {
+  animation: slide-in-up 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes slide-in-up {
+  from {
+    transform: translateY(4px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
 
