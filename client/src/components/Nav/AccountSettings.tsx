@@ -6,6 +6,9 @@ import { MyFilesModal } from '~/components/Chat/Input/Files/MyFilesModal';
 import { useGetStartupConfig, useGetUserBalance } from '~/data-provider';
 import { useAuthContext } from '~/hooks/AuthContext';
 import { useLocalize } from '~/hooks';
+import { useRecoilState } from 'recoil';
+import { LayoutTemplate } from 'lucide-react';
+import store from '~/store';
 import Settings from './Settings';
 
 function AccountSettings({ collapsed = false }: { collapsed?: boolean }) {
@@ -18,6 +21,7 @@ function AccountSettings({ collapsed = false }: { collapsed?: boolean }) {
   const [showSettings, setShowSettings] = useState(false);
   const [showFiles, setShowFiles] = useState(false);
   const accountSettingsButtonRef = useRef<HTMLButtonElement>(null);
+  const [storyLabUI, setStoryLabUI] = useRecoilState(store.storyLabUI);
 
   return (
     <Menu.MenuProvider>
@@ -82,6 +86,10 @@ function AccountSettings({ collapsed = false }: { collapsed?: boolean }) {
             {localize('com_nav_help_faq')}
           </Menu.MenuItem>
         )}
+        <Menu.MenuItem onClick={() => setStoryLabUI(!storyLabUI)} className="select-item text-sm">
+          <LayoutTemplate className="icon-md" aria-hidden="true" />
+          {storyLabUI ? 'Desactivar StoryLab UI' : 'Activar StoryLab UI'}
+        </Menu.MenuItem>
         <Menu.MenuItem onClick={() => setShowSettings(true)} className="select-item text-sm">
           <GearIcon className="icon-md" aria-hidden="true" />
           {localize('com_nav_settings')}

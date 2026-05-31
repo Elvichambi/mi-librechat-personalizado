@@ -2,6 +2,9 @@ import { memo } from 'react';
 import type { NavLink } from '~/common';
 import SidePanelNav from '~/components/SidePanel/Nav';
 import ExpandedPanel from './ExpandedPanel';
+import { useRecoilValue } from 'recoil';
+import store from '~/store';
+import StoryLabSidebar from './StoryLabSidebar';
 import { cn } from '~/utils';
 
 function Sidebar({
@@ -19,6 +22,23 @@ function Sidebar({
   onResizeStart: (e: React.MouseEvent) => void;
   onResizeKeyboard: (direction: 'shrink' | 'grow') => void;
 }) {
+  const storyLabUI = useRecoilValue(store.storyLabUI);
+
+  if (storyLabUI) {
+    return (
+      <>
+        <div className="flex h-full w-full overflow-hidden">
+          <StoryLabSidebar
+            expanded={expanded}
+            links={links}
+            onCollapse={onCollapse}
+            onExpand={onExpand}
+          />
+        </div>
+      </>
+    );
+  }
+
   return (
     <>
       <div className="flex h-full w-full overflow-hidden">

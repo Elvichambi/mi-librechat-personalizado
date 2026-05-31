@@ -16,6 +16,8 @@ const staticAtoms = {
 
 const localStorageAtoms = {
   // General settings
+  storyLabUI: atomWithLocalStorage('storyLabUI', true),
+  runSettingsCollapsed: atomWithLocalStorage('runSettingsCollapsed', false),
   autoScroll: atomWithLocalStorage('autoScroll', false),
   sidebarExpanded: atomWithLocalStorage(
     'unifiedSidebarExpanded',

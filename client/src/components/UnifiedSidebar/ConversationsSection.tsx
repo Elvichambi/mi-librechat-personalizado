@@ -19,7 +19,7 @@ import store from '~/store';
 
 const BookmarkNav = lazy(() => import('~/components/Nav/Bookmarks/BookmarkNav'));
 
-const ConversationsSection = memo(() => {
+const ConversationsSection = memo(({ filterMode = 'all' }: { filterMode?: 'all' | 'active' | 'frozen' }) => {
   const localize = useLocalize();
   const isSmallScreen = useMediaQuery('(max-width: 768px)');
   const setSidebarExpanded = useSetRecoilState(store.sidebarExpanded);
@@ -72,8 +72,11 @@ const ConversationsSection = memo(() => {
   });
 
   const conversations = useMemo(() => {
-    return data ? data.pages.flatMap((page) => page.conversations) : [];
-  }, [data]);
+    const allConvos = data ? data.pages.flatMap((page) => page.conversations) : [];
+    if (filterMode === 'frozen') return allConvos.filter((c: any) => c.isFrozen === true);
+    if (filterMode === 'active') return allConvos.filter((c: any) => !c.isFrozen);
+    return allConvos;
+  }, [data, filterMode]);
 
   const toggleNav = useCallback(() => {
     if (isSmallScreen) {
@@ -108,14 +111,16 @@ const ConversationsSection = memo(() => {
       role="region"
       aria-label={localize('com_ui_chat_history')}
     >
-      <div className="flex items-center gap-0.5 px-3">
-        {hasAccessToBookmarks && (
-          <Suspense fallback={null}>
-            <BookmarkNav tags={tags} setTags={setTags} />
-          </Suspense>
-        )}
-        {search.enabled && <SearchBar isSmallScreen={isSmallScreen} />}
-      </div>
+      {filterMode === 'all' && (
+        <div className="flex items-center gap-0.5 px-3">
+          {hasAccessToBookmarks && (
+            <Suspense fallback={null}>
+              <BookmarkNav tags={tags} setTags={setTags} />
+            </Suspense>
+          )}
+          {search.enabled && <SearchBar isSmallScreen={isSmallScreen} />}
+        </div>
+      )}
       <div className="flex min-h-0 flex-grow flex-col overflow-hidden">
         <Conversations
           conversations={conversations}

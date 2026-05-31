@@ -1,0 +1,178 @@
+/* ===== StoryLab AI Studio — Custom Styles ===== */
+
+/* --- Custom Range Slider --- */
+.storylab-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--border-light, #d1d5db);
+  outline: none;
+  transition: background 0.2s;
+}
+
+.storylab-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #3b82f6;
+  cursor: pointer;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.storylab-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.15);
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.4);
+}
+
+.storylab-slider::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #3b82f6;
+  cursor: pointer;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.storylab-slider::-moz-range-thumb:hover {
+  transform: scale(1.15);
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.4);
+}
+
+.storylab-slider::-moz-range-track {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--border-light, #d1d5db);
+}
+
+/* --- Custom Toggle Switch --- */
+.storylab-toggle {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  width: 36px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+.storylab-toggle input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+  position: absolute;
+}
+
+.storylab-toggle .toggle-track {
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  background: var(--border-light, #d1d5db);
+  transition: background 0.2s;
+  cursor: pointer;
+}
+
+.storylab-toggle input:checked + .toggle-track {
+  background: #3b82f6;
+}
+
+.storylab-toggle .toggle-track::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: white;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+  transition: transform 0.2s;
+}
+
+.storylab-toggle input:checked + .toggle-track::after {
+  transform: translateX(16px);
+}
+
+/* --- RunSettings Panel Transitions --- */
+.storylab-panel-enter {
+  animation: storylab-slide-in 0.25s cubic-bezier(0.2, 0, 0, 1) forwards;
+}
+
+.storylab-panel-exit {
+  animation: storylab-slide-out 0.2s cubic-bezier(0.2, 0, 0, 1) forwards;
+}
+
+@keyframes storylab-slide-in {
+  from {
+    width: 0;
+    opacity: 0;
+  }
+  to {
+    width: 320px;
+    opacity: 1;
+  }
+}
+
+@keyframes storylab-slide-out {
+  from {
+    width: 320px;
+    opacity: 1;
+  }
+  to {
+    width: 0;
+    opacity: 0;
+  }
+}
+
+/* --- Sidebar Sub-Panel Slide --- */
+.storylab-subpanel-enter {
+  animation: storylab-subpanel-in 0.2s ease forwards;
+}
+
+@keyframes storylab-subpanel-in {
+  from {
+    transform: translateX(-100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+/* --- Scrollbar for StoryLab panels --- */
+.storylab-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+
+.storylab-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.storylab-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--border-light, #d1d5db);
+  border-radius: 2px;
+}
+
+.storylab-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--border-medium, #9ca3af);
+}
+
+/* --- Collapsible Section Chevron Rotation --- */
+.storylab-chevron {
+  transition: transform 0.2s ease;
+}
+
+.storylab-chevron-open {
+  transform: rotate(0deg);
+}
+
+.storylab-chevron-closed {
+  transform: rotate(-90deg);
+}

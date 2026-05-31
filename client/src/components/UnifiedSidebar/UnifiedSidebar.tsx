@@ -1,6 +1,6 @@
 import { useCallback, useState, useEffect, useRef, memo, startTransition } from 'react';
 import type { ReactNode } from 'react';
-import { useRecoilState } from 'recoil';
+import { useRecoilState, useRecoilValue } from 'recoil';
 import { useForm } from 'react-hook-form';
 import { useMediaQuery } from '@librechat/client';
 import type { ChatFormValues } from '~/common';
@@ -9,6 +9,7 @@ import useUnifiedSidebarLinks from '~/hooks/Nav/useUnifiedSidebarLinks';
 import { useChatHelpers, useLocalize } from '~/hooks';
 import SidePanelNav from '~/components/SidePanel/Nav';
 import ExpandedPanel from './ExpandedPanel';
+import StoryLabSidebar from './StoryLabSidebar';
 import Sidebar from './Sidebar';
 import { cn } from '~/utils';
 import store from '~/store';
@@ -46,6 +47,7 @@ function UnifiedSidebar() {
   const [sidebarWidth, setSidebarWidth] = useState(getInitialWidth);
   const [isResizing, setIsResizing] = useState(false);
   const resizeHandlers = useRef<{ move: (e: MouseEvent) => void; up: () => void } | null>(null);
+  const storyLabUI = useRecoilValue(store.storyLabUI);
 
   const links = useUnifiedSidebarLinks();
 
@@ -148,10 +150,16 @@ function UnifiedSidebar() {
         >
           <SidebarChatProvider>
             <ActivePanelProvider>
-              <ExpandedPanel links={links} onCollapse={handleCollapse} />
-              <nav className="min-h-0 flex-1 overflow-hidden bg-surface-primary-alt">
-                <SidePanelNav links={links} />
-              </nav>
+              {storyLabUI ? (
+                <StoryLabSidebar expanded={expanded} links={links} onCollapse={handleCollapse} onExpand={handleExpand} />
+              ) : (
+                <div className="flex h-full w-full flex-col overflow-hidden bg-surface-primary-alt">
+                  <ExpandedPanel links={links} expanded={expanded} onCollapse={handleCollapse} onExpand={handleExpand} />
+                  <nav className="min-h-0 flex-1 overflow-hidden bg-surface-primary-alt">
+                    <SidePanelNav links={links} />
+                  </nav>
+                </div>
+              )}
             </ActivePanelProvider>
           </SidebarChatProvider>
         </div>
