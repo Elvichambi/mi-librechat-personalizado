@@ -1,4 +1,4 @@
-import React, { memo, useState, useCallback, lazy, Suspense } from 'react';
+import React, { memo, useState, useCallback, lazy, Suspense, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useRecoilValue } from 'recoil';
 import { SquarePen, Snowflake, ChevronDown, ChevronRight, Sparkles, PanelLeftClose } from 'lucide-react';
@@ -19,15 +19,20 @@ function StoryLabSidebar({
   links,
   onCollapse,
   onExpand,
+  sidebarWidth,
+  setSidebarWidth,
 }: {
   expanded: boolean;
   links: NavLink[];
   onCollapse?: () => void;
   onExpand?: () => void;
+  sidebarWidth?: number;
+  setSidebarWidth?: React.Dispatch<React.SetStateAction<number>>;
 }) {
   const [showFrozen, setShowFrozen] = useState(false);
   const [showTools, setShowTools] = useState(false);
   const [activeSubPanel, setActiveSubPanel] = useState<string | null>(null);
+  const [lastNormalWidth, setLastNormalWidth] = useState<number>(sidebarWidth || 260);
 
   const localize = useLocalize();
   const queryClient = useQueryClient();
@@ -39,6 +44,13 @@ function StoryLabSidebar({
   // Filter out the conversations link — we render it ourselves
   const toolLinks = links.filter((l) => l.id !== 'conversations');
 
+  // Save the last dragged width in normal view
+  useEffect(() => {
+    if (activeSubPanel === null && sidebarWidth != null) {
+      setLastNormalWidth(sidebarWidth);
+    }
+  }, [sidebarWidth, activeSubPanel]);
+
   const handleNewChat = useCallback(
     (e: React.MouseEvent) => {
       e.preventDefault();
@@ -46,11 +58,14 @@ function StoryLabSidebar({
       queryClient.invalidateQueries([QueryKeys.messages]);
       newConversation();
       setActiveSubPanel(null);
+      if (setSidebarWidth) {
+        setSidebarWidth(lastNormalWidth);
+      }
       if (switchToHistory) {
         setActive(DEFAULT_PANEL);
       }
     },
-    [queryClient, conversation?.conversationId, newConversation, switchToHistory, setActive],
+    [queryClient, conversation?.conversationId, newConversation, switchToHistory, setActive, setSidebarWidth, lastNormalWidth],
   );
 
   const handleToolClick = useCallback(
@@ -61,12 +76,24 @@ function StoryLabSidebar({
       }
       if (activeSubPanel === link.id) {
         setActiveSubPanel(null);
+        if (setSidebarWidth) {
+          setSidebarWidth(lastNormalWidth);
+        }
         return;
       }
+      
+      // Auto-expand left sidebar if it is too narrow
+      if (sidebarWidth != null && setSidebarWidth) {
+        setLastNormalWidth(sidebarWidth);
+        if (sidebarWidth < 340) {
+          setSidebarWidth(340);
+        }
+      }
+
       setActiveSubPanel(link.id);
       setActive(link.id);
     },
-    [activeSubPanel, setActive],
+    [activeSubPanel, setActive, sidebarWidth, setSidebarWidth, lastNormalWidth],
   );
 
   if (!expanded) return null;
@@ -79,7 +106,12 @@ function StoryLabSidebar({
         {/* Sub-panel header */}
         <div className="flex items-center gap-2 border-b border-border-light p-3">
           <button
-            onClick={() => setActiveSubPanel(null)}
+            onClick={() => {
+              setActiveSubPanel(null);
+              if (setSidebarWidth) {
+                setSidebarWidth(lastNormalWidth);
+              }
+            }}
             className="flex h-8 w-8 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
             aria-label="Back"
           >

@@ -15,13 +15,13 @@ import { cn } from '~/utils';
 import store from '~/store';
 
 const COLLAPSED_WIDTH = 52;
-const EXPANDED_MIN = 360;
+const EXPANDED_MIN = 240;
 const TRANSITION_MS = 300;
 const EASING = 'cubic-bezier(0.2, 0, 0, 1)';
 
 function getInitialWidth(): number {
   const saved = localStorage.getItem('side:width');
-  return saved ? Math.max(Number(saved), EXPANDED_MIN) : EXPANDED_MIN;
+  return saved ? Math.max(Number(saved), EXPANDED_MIN) : 260;
 }
 
 /**
@@ -151,7 +151,14 @@ function UnifiedSidebar() {
           <SidebarChatProvider>
             <ActivePanelProvider>
               {storyLabUI ? (
-                <StoryLabSidebar expanded={expanded} links={links} onCollapse={handleCollapse} onExpand={handleExpand} />
+                <StoryLabSidebar
+                  expanded={expanded}
+                  links={links}
+                  onCollapse={handleCollapse}
+                  onExpand={handleExpand}
+                  sidebarWidth={sidebarWidth}
+                  setSidebarWidth={setSidebarWidth}
+                />
               ) : (
                 <div className="flex h-full w-full flex-col overflow-hidden bg-surface-primary-alt">
                   <ExpandedPanel links={links} expanded={expanded} onCollapse={handleCollapse} onExpand={handleExpand} />
@@ -204,6 +211,8 @@ function UnifiedSidebar() {
             onExpand={handleExpand}
             onResizeStart={handleResizeStart}
             onResizeKeyboard={handleResizeKeyboard}
+            sidebarWidth={sidebarWidth}
+            setSidebarWidth={setSidebarWidth}
           />
         </aside>
       </ActivePanelProvider>

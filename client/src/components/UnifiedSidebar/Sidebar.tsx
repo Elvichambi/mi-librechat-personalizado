@@ -14,6 +14,8 @@ function Sidebar({
   onExpand,
   onResizeStart,
   onResizeKeyboard,
+  sidebarWidth,
+  setSidebarWidth,
 }: {
   links: NavLink[];
   expanded: boolean;
@@ -21,6 +23,8 @@ function Sidebar({
   onExpand: () => void;
   onResizeStart: (e: React.MouseEvent) => void;
   onResizeKeyboard: (direction: 'shrink' | 'grow') => void;
+  sidebarWidth?: number;
+  setSidebarWidth?: React.Dispatch<React.SetStateAction<number>>;
 }) {
   const storyLabUI = useRecoilValue(store.storyLabUI);
 
@@ -33,6 +37,8 @@ function Sidebar({
             links={links}
             onCollapse={onCollapse}
             onExpand={onExpand}
+            sidebarWidth={sidebarWidth}
+            setSidebarWidth={setSidebarWidth}
           />
         </div>
         <div
