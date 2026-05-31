@@ -354,6 +354,7 @@ function RunSettingsContent({ setCollapsed }: { setCollapsed: (val: boolean) => 
     const saved = localStorage.getItem('run-settings:width');
     return saved ? parseInt(saved, 10) : 320;
   });
+  const [lastNormalWidth, setLastNormalWidth] = useState(panelWidth);
   const [isResizing, setIsResizing] = useState(false);
 
   const handleResizeStart = (e: React.MouseEvent) => {
@@ -365,6 +366,11 @@ function RunSettingsContent({ setCollapsed }: { setCollapsed: (val: boolean) => 
       const newWidth = Math.max(280, Math.min(window.innerWidth - moveEvent.clientX, 650));
       setPanelWidth(newWidth);
       localStorage.setItem('run-settings:width', String(newWidth));
+      
+      // If we are dragging in normal settings view, save it as the last normal width
+      if (!showModelSelection && !showSystemInstructions) {
+        setLastNormalWidth(newWidth);
+      }
     };
 
     const handleMouseUp = () => {
@@ -432,6 +438,7 @@ function RunSettingsContent({ setCollapsed }: { setCollapsed: (val: boolean) => 
           onClick={() => {
             setShowModelSelection(false);
             setShowSystemInstructions(false);
+            setPanelWidth(lastNormalWidth);
           }}
         />
       )}
@@ -439,14 +446,20 @@ function RunSettingsContent({ setCollapsed }: { setCollapsed: (val: boolean) => 
       {/* Render selected Sidebar Drawer */}
       {showModelSelection ? (
         <ModelSelectionSidebar 
-          onClose={() => setShowModelSelection(false)} 
+          onClose={() => {
+            setShowModelSelection(false);
+            setPanelWidth(lastNormalWidth);
+          }} 
           panelWidth={panelWidth}
           isResizing={isResizing}
           handleResizeStart={handleResizeStart}
         />
       ) : showSystemInstructions ? (
         <SystemInstructionsSidebar 
-          onClose={() => setShowSystemInstructions(false)} 
+          onClose={() => {
+            setShowSystemInstructions(false);
+            setPanelWidth(lastNormalWidth);
+          }} 
           panelWidth={panelWidth}
           isResizing={isResizing}
           handleResizeStart={handleResizeStart}
@@ -488,6 +501,7 @@ function RunSettingsContent({ setCollapsed }: { setCollapsed: (val: boolean) => 
             {/* Active Model Card — Google AI Studio style */}
             <div 
               onClick={() => {
+                setLastNormalWidth(panelWidth);
                 if (panelWidth < 450) {
                   setPanelWidth(450);
                 }
@@ -531,6 +545,7 @@ function RunSettingsContent({ setCollapsed }: { setCollapsed: (val: boolean) => 
             {/* System Instructions — Card style leading to wide editor */}
             <div 
               onClick={() => {
+                setLastNormalWidth(panelWidth);
                 if (panelWidth < 480) {
                   setPanelWidth(480);
                 }
