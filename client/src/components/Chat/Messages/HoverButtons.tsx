@@ -12,7 +12,6 @@ import Feedback from './Feedback';
 import { cn } from '~/utils';
 import store from '~/store';
 
-let activeDeletePromise = Promise.resolve();
 
 type THoverButtons = {
   isEditing: boolean;
@@ -270,73 +269,69 @@ const HoverButtons = ({
     );
     if (!confirmed) return;
 
-    activeDeletePromise = activeDeletePromise.then(async () => {
-      try {
-        // DIAGNOSTIC: Log the exact conversationId used for the cache key
-        console.log('[HoverButtons handleDelete] cache key convoId:', conversation.conversationId);
-        console.log('[HoverButtons handleDelete] deleting messageId:', message.messageId, 'parentMessageId:', message.parentMessageId);
+    try {
+      // DIAGNOSTIC: Log the exact conversationId used for the cache key
+      console.log('[HoverButtons handleDelete] cache key convoId:', conversation.conversationId);
+      console.log('[HoverButtons handleDelete] deleting messageId:', message.messageId, 'parentMessageId:', message.parentMessageId);
 
-        // Check if this is the last message before deleting
-        const currentMessages = queryClient.getQueryData<TMessage[]>(
-          [QueryKeys.messages, conversation.conversationId]
-        ) || [];
-        console.log('[HoverButtons handleDelete] currentMessages in cache:', currentMessages.length);
-        const remainingCount = currentMessages.filter(
-          (m) => m.messageId !== message.messageId
-        ).length;
-        console.log('[HoverButtons handleDelete] remainingCount after filter:', remainingCount);
+      // Check if this is the last message before deleting
+      const currentMessages = queryClient.getQueryData<TMessage[]>(
+        [QueryKeys.messages, conversation.conversationId]
+      ) || [];
+      console.log('[HoverButtons handleDelete] currentMessages in cache:', currentMessages.length);
+      const remainingCount = currentMessages.filter(
+        (m) => m.messageId !== message.messageId
+      ).length;
+      console.log('[HoverButtons handleDelete] remainingCount after filter:', remainingCount);
 
-        if (remainingCount === 0) {
-          // Last message deleted — remove entire conversation and redirect to new chat
-          deleteConvo.mutate({
-            conversationId: conversation.conversationId!,
-            source: 'button',
+      if (remainingCount === 0) {
+        // Last message deleted — remove entire conversation and redirect to new chat
+        deleteConvo.mutate({
+          conversationId: conversation.conversationId!,
+          source: 'button',
           });
-          return;
-        }
-
-        // 1. Optimistic update: surgically remove from cache and re-link children INSTANTLY
-        queryClient.setQueryData<TMessage[]>([QueryKeys.messages, conversation.conversationId], (prev) => {
-          if (!prev) return prev;
-          const parentId = message.parentMessageId || '00000000-0000-0000-0000-000000000000';
-          const updated = prev
-            .filter((m) => m.messageId !== message.messageId)
-            .map((m) => {
-              if (m.parentMessageId === message.messageId) {
-                return { ...m, parentMessageId: parentId };
-              }
-              return m;
-            });
-          console.log('[HoverButtons handleDelete] setQueryData updated cache, new length:', updated.length);
-          return updated;
-        });
-
-        // Show toast immediately so the user gets instant feedback
-        showToast({
-          message: localize('com_ui_delete_success') || 'Mensaje eliminado con éxito',
-          status: 'success',
-        });
-
-        // 2. Delete on server in the background
-        await request.delete(`/api/messages/${conversation.conversationId}/${message.messageId}`);
-        console.log('[HoverButtons handleDelete] Server delete confirmed (204)');
-
-        // 3. Invalidate queries in the background to ensure authoritative sync
-        queryClient.invalidateQueries({
-          queryKey: [QueryKeys.messages, conversation.conversationId],
-          refetchType: 'active',
-        });
-        console.log('[HoverButtons handleDelete] invalidateQueries triggered in background');
-      } catch (err) {
-        console.error('[HoverButtons handleDelete] Error deleting message:', err);
-        showToast({
-          message: localize('com_ui_delete_error') || 'Error al eliminar el mensaje',
-          status: 'error',
-        });
+        return;
       }
-    });
 
-    await activeDeletePromise;
+      // 1. Optimistic update: surgically remove from cache and re-link children INSTANTLY
+      queryClient.setQueryData<TMessage[]>([QueryKeys.messages, conversation.conversationId], (prev) => {
+        if (!prev) return prev;
+        const parentId = message.parentMessageId || '00000000-0000-0000-0000-000000000000';
+        const updated = prev
+          .filter((m) => m.messageId !== message.messageId)
+          .map((m) => {
+            if (m.parentMessageId === message.messageId) {
+              return { ...m, parentMessageId: parentId };
+            }
+            return m;
+          });
+        console.log('[HoverButtons handleDelete] setQueryData updated cache, new length:', updated.length);
+        return updated;
+      });
+
+      // Show toast immediately so the user gets instant feedback
+      showToast({
+        message: localize('com_ui_delete_success') || 'Mensaje eliminado con éxito',
+        status: 'success',
+      });
+
+      // 2. Delete on server in the background
+      await request.delete(`/api/messages/${conversation.conversationId}/${message.messageId}`);
+      console.log('[HoverButtons handleDelete] Server delete confirmed (204)');
+
+      // 3. Invalidate queries in the background to ensure authoritative sync
+      queryClient.invalidateQueries({
+        queryKey: [QueryKeys.messages, conversation.conversationId],
+        refetchType: 'active',
+      });
+      console.log('[HoverButtons handleDelete] invalidateQueries triggered in background');
+    } catch (err) {
+      console.error('[HoverButtons handleDelete] Error deleting message:', err);
+      showToast({
+        message: localize('com_ui_delete_error') || 'Error al eliminar el mensaje',
+        status: 'error',
+      });
+    }
   };
 
   const handleFork = () => {
@@ -510,73 +505,69 @@ export const MessageActionsDropdown = memo(({
     );
     if (!confirmed) return;
 
-    activeDeletePromise = activeDeletePromise.then(async () => {
-      try {
-        // DIAGNOSTIC: Log the exact conversationId used for the cache key
-        console.log('[MessageActionsDropdown handleDelete] cache key convoId:', conversation.conversationId);
-        console.log('[MessageActionsDropdown handleDelete] deleting messageId:', message.messageId, 'parentMessageId:', message.parentMessageId);
+    try {
+      // DIAGNOSTIC: Log the exact conversationId used for the cache key
+      console.log('[MessageActionsDropdown handleDelete] cache key convoId:', conversation.conversationId);
+      console.log('[MessageActionsDropdown handleDelete] deleting messageId:', message.messageId, 'parentMessageId:', message.parentMessageId);
 
-        // Check if this is the last message before deleting
-        const currentMessages = queryClient.getQueryData<TMessage[]>(
-          [QueryKeys.messages, conversation.conversationId]
-        ) || [];
-        console.log('[MessageActionsDropdown handleDelete] currentMessages in cache:', currentMessages.length);
-        const remainingCount = currentMessages.filter(
-          (m) => m.messageId !== message.messageId
-        ).length;
-        console.log('[MessageActionsDropdown handleDelete] remainingCount after filter:', remainingCount);
+      // Check if this is the last message before deleting
+      const currentMessages = queryClient.getQueryData<TMessage[]>(
+        [QueryKeys.messages, conversation.conversationId]
+      ) || [];
+      console.log('[MessageActionsDropdown handleDelete] currentMessages in cache:', currentMessages.length);
+      const remainingCount = currentMessages.filter(
+        (m) => m.messageId !== message.messageId
+      ).length;
+      console.log('[MessageActionsDropdown handleDelete] remainingCount after filter:', remainingCount);
 
-        if (remainingCount === 0) {
-          // Last message deleted — remove entire conversation and redirect to new chat
-          deleteConvo.mutate({
-            conversationId: conversation.conversationId!,
-            source: 'button',
-          });
-          return;
-        }
-
-        // 1. Optimistic update: surgically remove from cache and re-link children INSTANTLY
-        queryClient.setQueryData<TMessage[]>([QueryKeys.messages, conversation.conversationId], (prev) => {
-          if (!prev) return prev;
-          const parentId = message.parentMessageId || '00000000-0000-0000-0000-000000000000';
-          const updated = prev
-            .filter((m) => m.messageId !== message.messageId)
-            .map((m) => {
-              if (m.parentMessageId === message.messageId) {
-                return { ...m, parentMessageId: parentId };
-              }
-              return m;
-            });
-          console.log('[MessageActionsDropdown handleDelete] setQueryData updated cache, new length:', updated.length);
-          return updated;
+      if (remainingCount === 0) {
+        // Last message deleted — remove entire conversation and redirect to new chat
+        deleteConvo.mutate({
+          conversationId: conversation.conversationId!,
+          source: 'button',
         });
-
-        // Show toast immediately so the user gets instant feedback
-        showToast({
-          message: localize('com_ui_delete_success') || 'Mensaje eliminado con éxito',
-          status: 'success',
-        });
-
-        // 2. Delete on server in the background
-        await request.delete(`/api/messages/${conversation.conversationId}/${message.messageId}`);
-        console.log('[MessageActionsDropdown handleDelete] Server delete confirmed (204)');
-
-        // 3. Invalidate queries in the background to ensure authoritative sync
-        queryClient.invalidateQueries({
-          queryKey: [QueryKeys.messages, conversation.conversationId],
-          refetchType: 'active',
-        });
-        console.log('[MessageActionsDropdown handleDelete] invalidateQueries triggered in background');
-      } catch (err) {
-        console.error('[MessageActionsDropdown handleDelete] Error deleting message:', err);
-        showToast({
-          message: localize('com_ui_delete_error') || 'Error al eliminar el mensaje',
-          status: 'error',
-        });
+        return;
       }
-    });
 
-    await activeDeletePromise;
+      // 1. Optimistic update: surgically remove from cache and re-link children INSTANTLY
+      queryClient.setQueryData<TMessage[]>([QueryKeys.messages, conversation.conversationId], (prev) => {
+        if (!prev) return prev;
+        const parentId = message.parentMessageId || '00000000-0000-0000-0000-000000000000';
+        const updated = prev
+          .filter((m) => m.messageId !== message.messageId)
+          .map((m) => {
+            if (m.parentMessageId === message.messageId) {
+              return { ...m, parentMessageId: parentId };
+            }
+            return m;
+          });
+        console.log('[MessageActionsDropdown handleDelete] setQueryData updated cache, new length:', updated.length);
+        return updated;
+      });
+
+      // Show toast immediately so the user gets instant feedback
+      showToast({
+        message: localize('com_ui_delete_success') || 'Mensaje eliminado con éxito',
+        status: 'success',
+      });
+
+      // 2. Delete on server in the background
+      await request.delete(`/api/messages/${conversation.conversationId}/${message.messageId}`);
+      console.log('[MessageActionsDropdown handleDelete] Server delete confirmed (204)');
+
+      // 3. Invalidate queries in the background to ensure authoritative sync
+      queryClient.invalidateQueries({
+        queryKey: [QueryKeys.messages, conversation.conversationId],
+        refetchType: 'active',
+      });
+      console.log('[MessageActionsDropdown handleDelete] invalidateQueries triggered in background');
+    } catch (err) {
+      console.error('[MessageActionsDropdown handleDelete] Error deleting message:', err);
+      showToast({
+        message: localize('com_ui_delete_error') || 'Error al eliminar el mensaje',
+        status: 'error',
+      });
+    }
   };
 
   const handleCopyMarkdown = () => {

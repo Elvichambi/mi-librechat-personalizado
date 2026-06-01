@@ -66,7 +66,8 @@ export default function useMessageHelpers(props: TMessageProps) {
 
     if (
       textKey !== latestText.current ||
-      (convoId != null && previousConvoId != null && convoId !== previousConvoId)
+      (convoId != null && previousConvoId != null && convoId !== previousConvoId) ||
+      latestMessageId !== message.messageId
     ) {
       logger.log('latest_message', '[useMessageHelpers] Setting latest message: ', logInfo);
       latestText.current = textKey;
@@ -74,7 +75,7 @@ export default function useMessageHelpers(props: TMessageProps) {
     } else {
       logger.log('latest_message', 'No change in latest message', logInfo);
     }
-  }, [isLast, message, setLatestMessage, conversation?.conversationId]);
+  }, [isLast, message, setLatestMessage, conversation?.conversationId, latestMessageId]);
 
   const enterEdit = useCallback(
     (cancel?: boolean) => setCurrentEditId && setCurrentEditId(cancel === true ? -1 : messageId),

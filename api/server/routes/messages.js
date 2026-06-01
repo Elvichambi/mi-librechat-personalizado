@@ -447,41 +447,6 @@ router.delete('/:conversationId/:messageId', validateMessageReq, async (req, res
           );
           logger.info(`[messages.js DELETE] Pulled message ID from Conversation messages array. Pull result: ${JSON.stringify(pullResult)}`);
         }
-
-        // 5. Post-deletion healing sweep with strict Alternating-Turn structure (last resort)
-        const remainingMessages = await Message.find({ conversationId, user: req.user.id }).sort({ createdAt: 1 }).lean();
-        const messageMap = new Map(remainingMessages.map((m) => [m.messageId, m]));
-        
-        const bulkUpdates = [];
-        for (const msg of remainingMessages) {
-          const pId = msg.parentMessageId;
-          if (pId && pId !== '00000000-0000-0000-0000-000000000000') {
-            if (!messageMap.has(pId)) {
-              // Orphan detected! Find the chronologically closest previous message of the ALTERNATING turn type
-              const targetIsUser = !msg.isCreatedByUser; // Model parent should be User; User parent should be Model
-              const validPrevious = remainingMessages
-                .filter((m) => m.createdAt < msg.createdAt && m.isCreatedByUser === targetIsUser)
-                .sort((a, b) => b.createdAt - a.createdAt); // Descending (closest first)
-                
-              const newParentId = validPrevious.length > 0 
-                ? validPrevious[0].messageId 
-                : '00000000-0000-0000-0000-000000000000';
-                
-              bulkUpdates.push({
-                updateOne: {
-                  filter: { _id: msg._id },
-                  update: { $set: { parentMessageId: newParentId } }
-                }
-              });
-              logger.info(`[messages.js DELETE heal] Healed orphan message ${msg.messageId}. Re-linked parent from missing ${pId} to alternating ${newParentId}`);
-            }
-          }
-        }
-        
-        if (bulkUpdates.length > 0) {
-          await Message.bulkWrite(bulkUpdates);
-          logger.info(`[messages.js DELETE heal] Atomic bulk heal complete, updated ${bulkUpdates.length} orphaned messages.`);
-        }
       } else {
         logger.warn(`[messages.js DELETE] deleteResult indicated no message was deleted: ${JSON.stringify(deleteResult)}. Skipping child re-linking and conversation pulling.`);
       }
