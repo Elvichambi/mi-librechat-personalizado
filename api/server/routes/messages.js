@@ -7,6 +7,8 @@ const { findAllArtifacts, replaceArtifactContent } = require('~/server/services/
 const { requireJwtAuth, validateMessageReq } = require('~/server/middleware');
 const db = require('~/models');
 
+const activeDeletions = new Map();
+
 const router = express.Router();
 router.use(requireJwtAuth);
 
@@ -400,9 +402,15 @@ router.put('/:conversationId/:messageId/feedback', validateMessageReq, async (re
 });
 
 router.delete('/:conversationId/:messageId', validateMessageReq, async (req, res) => {
-  try {
-    const { conversationId, messageId } = req.params;
+  const { conversationId, messageId } = req.params;
 
+  // 1. Wait for any active deletion on this conversation to complete (serialization)
+  while (activeDeletions.has(conversationId)) {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  activeDeletions.set(conversationId, true);
+
+  try {
     const mongoose = require('mongoose');
     const Message = mongoose.models.Message;
     const Convo = mongoose.models.Conversation;
@@ -410,19 +418,19 @@ router.delete('/:conversationId/:messageId', validateMessageReq, async (req, res
     console.log('Object.keys(mongoose.models):', Object.keys(mongoose.models));
     logger.info(`[messages.js DELETE] Object.keys(mongoose.models): ${JSON.stringify(Object.keys(mongoose.models))}`);
 
-    // 1. Find the message to delete before deleting it, to retrieve parentMessageId and _id
+    // 2. Find the message to delete before deleting it, to retrieve parentMessageId and _id
     const messageToDelete = await Message.findOne({ messageId, conversationId, user: req.user.id });
     
     if (messageToDelete) {
       const parentId = messageToDelete.parentMessageId;
       logger.info(`[messages.js DELETE] Found message to delete: ${messageId}, parentMessageId: ${parentId}`);
 
-      // 2. Perform the deletion using the native db.deleteMessages function (this triggers pre('deleteMany') hook for MeiliSearch)
+      // 3. Perform the deletion using the native db.deleteMessages function (this triggers pre('deleteMany') hook for MeiliSearch)
       const deleteResult = await db.deleteMessages({ messageId, conversationId, user: req.user.id });
       console.log('deleteResult:', deleteResult);
       logger.info(`[messages.js DELETE] deleteResult: ${JSON.stringify(deleteResult)}`);
 
-      // 3. Only if the deletion succeeded (deletedCount > 0), perform re-linking and pulling
+      // 4. Only if the deletion succeeded (deletedCount > 0), perform re-linking and pulling
       if (deleteResult && deleteResult.deletedCount > 0) {
         // Re-link direct children to the grandparent parentMessageId (surgical deletion)
         const updateChildrenResult = await Message.updateMany(
@@ -439,6 +447,41 @@ router.delete('/:conversationId/:messageId', validateMessageReq, async (req, res
           );
           logger.info(`[messages.js DELETE] Pulled message ID from Conversation messages array. Pull result: ${JSON.stringify(pullResult)}`);
         }
+
+        // 5. Post-deletion healing sweep with strict Alternating-Turn structure (last resort)
+        const remainingMessages = await Message.find({ conversationId, user: req.user.id }).sort({ createdAt: 1 }).lean();
+        const messageMap = new Map(remainingMessages.map((m) => [m.messageId, m]));
+        
+        const bulkUpdates = [];
+        for (const msg of remainingMessages) {
+          const pId = msg.parentMessageId;
+          if (pId && pId !== '00000000-0000-0000-0000-000000000000') {
+            if (!messageMap.has(pId)) {
+              // Orphan detected! Find the chronologically closest previous message of the ALTERNATING turn type
+              const targetIsUser = !msg.isCreatedByUser; // Model parent should be User; User parent should be Model
+              const validPrevious = remainingMessages
+                .filter((m) => m.createdAt < msg.createdAt && m.isCreatedByUser === targetIsUser)
+                .sort((a, b) => b.createdAt - a.createdAt); // Descending (closest first)
+                
+              const newParentId = validPrevious.length > 0 
+                ? validPrevious[0].messageId 
+                : '00000000-0000-0000-0000-000000000000';
+                
+              bulkUpdates.push({
+                updateOne: {
+                  filter: { _id: msg._id },
+                  update: { $set: { parentMessageId: newParentId } }
+                }
+              });
+              logger.info(`[messages.js DELETE heal] Healed orphan message ${msg.messageId}. Re-linked parent from missing ${pId} to alternating ${newParentId}`);
+            }
+          }
+        }
+        
+        if (bulkUpdates.length > 0) {
+          await Message.bulkWrite(bulkUpdates);
+          logger.info(`[messages.js DELETE heal] Atomic bulk heal complete, updated ${bulkUpdates.length} orphaned messages.`);
+        }
       } else {
         logger.warn(`[messages.js DELETE] deleteResult indicated no message was deleted: ${JSON.stringify(deleteResult)}. Skipping child re-linking and conversation pulling.`);
       }
@@ -450,6 +493,8 @@ router.delete('/:conversationId/:messageId', validateMessageReq, async (req, res
   } catch (error) {
     logger.error('Error deleting message:', error);
     res.status(500).json({ error: 'Internal server error' });
+  } finally {
+    activeDeletions.delete(conversationId);
   }
 });
 
