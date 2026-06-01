@@ -434,8 +434,8 @@ router.delete('/:conversationId/:messageId', validateMessageReq, async (req, res
         );
       }
 
-      // Delete the target message itself using LibreChat's native db wrapper
-      await db.deleteMessages({ messageId, conversationId, user: req.user.id });
+      // Delete the target message itself using the raw Mongoose model (fully tested and safe)
+      await Message.deleteOne({ messageId, conversationId, user: req.user.id });
     }
 
     res.status(204).send();

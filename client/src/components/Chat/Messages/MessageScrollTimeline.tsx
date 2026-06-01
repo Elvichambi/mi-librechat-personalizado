@@ -234,58 +234,56 @@ export default function MessageScrollTimeline({
   return (
     <div
       ref={containerRef}
-      className="absolute right-6 top-1/2 -translate-y-1/2 z-[25] flex flex-col items-center justify-center select-none pointer-events-none max-h-[80vh] overflow-y-auto scrollbar-none"
-      style={{ width: '16px' }}
+      className="absolute right-6 top-8 bottom-8 z-[25] flex flex-col items-center justify-between select-none pointer-events-none"
+      style={{ width: '12px' }}
     >
       {/* Subtle Vertical Track Line (centered behind the flex dots) */}
-      <div className="absolute top-0 bottom-0 w-[1px] bg-black/10 dark:bg-white/[0.08] left-1/2 -translate-x-1/2" />
+      <div className="absolute top-0 bottom-0 w-[1px] bg-black/10 dark:bg-white/[0.08]" />
 
-      {/* Evenly Spaced Dots Container */}
-      <div className="flex flex-col items-center gap-3.5 relative py-2 pointer-events-auto">
-        {dots.map((dot) => {
-          const isActive = activeMessageId === dot.messageId;
-          const isHovered = hoveredDotId === dot.messageId;
+      {/* Render Dots directly with justify-between spacing */}
+      {dots.map((dot) => {
+        const isActive = activeMessageId === dot.messageId;
+        const isHovered = hoveredDotId === dot.messageId;
 
-          return (
-            <button
-              key={dot.messageId}
-              type="button"
-              onClick={() => handleDotClick(dot)}
-              onMouseEnter={(e) => {
-                setHoveredDotId(dot.messageId);
-                const rect = e.currentTarget.getBoundingClientRect();
-                const containerRect = containerRef.current?.getBoundingClientRect();
-                if (rect && containerRect) {
-                  setHoverPos({
-                    top: rect.top - containerRect.top + rect.height / 2,
-                    left: -180, // Tooltip on the left
-                  });
-                }
-              }}
-              onMouseLeave={() => {
-                setHoveredDotId(null);
-                setHoverPos(null);
-              }}
+        return (
+          <button
+            key={dot.messageId}
+            type="button"
+            onClick={() => handleDotClick(dot)}
+            onMouseEnter={(e) => {
+              setHoveredDotId(dot.messageId);
+              const rect = e.currentTarget.getBoundingClientRect();
+              const containerRect = containerRef.current?.getBoundingClientRect();
+              if (rect && containerRect) {
+                setHoverPos({
+                  top: rect.top - containerRect.top + rect.height / 2,
+                  left: -180, // Tooltip on the left
+                });
+              }
+            }}
+            onMouseLeave={() => {
+              setHoveredDotId(null);
+              setHoverPos(null);
+            }}
+            className={cn(
+              'relative flex items-center justify-center p-1.5 cursor-pointer pointer-events-auto rounded-full focus:outline-none transition-all group duration-200',
+              isActive && 'active-dot-btn'
+            )}
+          >
+            {/* Dot asset with dynamic sizing and shadows */}
+            <div
               className={cn(
-                'relative flex items-center justify-center p-1.5 cursor-pointer rounded-full focus:outline-none transition-all group duration-200',
-                isActive && 'active-dot-btn'
+                'w-1.5 h-1.5 rounded-full transition-all duration-300 transform-gpu',
+                isActive
+                  ? 'bg-black dark:bg-white scale-125 shadow-[0_0_8px_rgba(0,0,0,0.3)] dark:shadow-[0_0_8px_rgba(255,255,255,0.8)]'
+                  : isHovered
+                  ? 'bg-[#3b82f6] scale-150 shadow-[0_0_8px_rgba(59,130,246,0.8)]'
+                  : 'bg-black/35 dark:bg-white/20 hover:bg-black/60 dark:hover:bg-white/40'
               )}
-            >
-              {/* Dot asset with dynamic sizing and shadows */}
-              <div
-                className={cn(
-                  'w-1.5 h-1.5 rounded-full transition-all duration-300 transform-gpu',
-                  isActive
-                    ? 'bg-black dark:bg-white scale-125 shadow-[0_0_8px_rgba(0,0,0,0.3)] dark:shadow-[0_0_8px_rgba(255,255,255,0.8)]'
-                    : isHovered
-                    ? 'bg-[#3b82f6] scale-150 shadow-[0_0_8px_rgba(59,130,246,0.8)]'
-                    : 'bg-black/35 dark:bg-white/20 hover:bg-black/60 dark:hover:bg-white/40'
-                )}
-              />
-            </button>
-          );
-        })}
-      </div>
+            />
+          </button>
+        );
+      })}
 
       {/* Floating Tooltip Snippet (Google AI Studio style) */}
       {hoveredDotId && hoveredDot && hoverPos && (
