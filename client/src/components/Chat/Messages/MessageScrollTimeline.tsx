@@ -8,6 +8,7 @@ interface TimelineDot {
   isCreatedByUser: boolean;
   offsetTop: number;
   relativeTopPercent: number; // calculated relative to scrollHeight
+  aiResponseText?: string; // snippet from the paired AI response
 }
 
 interface MessageScrollTimelineProps {
@@ -91,7 +92,13 @@ export default function MessageScrollTimeline({
       if (!messageId) return;
 
       const foundMsg = flatMessages.find((m) => m.messageId === messageId);
-      if (!foundMsg) return;
+      // Only create dots for user messages (paired turns)
+      if (!foundMsg || !foundMsg.isCreatedByUser) return;
+
+      // Find the paired AI response (first child from model)
+      const aiResponse = flatMessages.find(
+        (m) => m.parentMessageId === foundMsg.messageId && !m.isCreatedByUser
+      );
 
       // offsetTop of the element inside scroll container
       const htmlEl = el as HTMLElement;
@@ -107,9 +114,10 @@ export default function MessageScrollTimeline({
       newDots.push({
         messageId,
         text: getMessageSnippet(foundMsg),
-        isCreatedByUser: !!foundMsg.isCreatedByUser,
+        isCreatedByUser: true,
         offsetTop,
         relativeTopPercent,
+        aiResponseText: aiResponse ? getMessageSnippet(aiResponse) : undefined,
       });
     });
 
@@ -136,17 +144,24 @@ export default function MessageScrollTimeline({
     const scrollContainer = scrollableRef.current;
     if (!scrollContainer || dots.length === 0) return;
 
-    const { scrollTop, clientHeight } = scrollContainer;
+    const { scrollTop, clientHeight, scrollHeight } = scrollContainer;
     // We consider a message visible if scroll is near its offsetTop
     // We offset by clientHeight / 3 for visual comfort
     const scrollTriggerY = scrollTop + clientHeight / 3;
 
+    // If scrolled near the very bottom, force last dot active
+    const isAtBottom = scrollTop + clientHeight >= scrollHeight - 30;
+
     let activeId = dots[0].messageId;
-    for (let i = 0; i < dots.length; i++) {
-      if (scrollTriggerY >= dots[i].offsetTop) {
-        activeId = dots[i].messageId;
-      } else {
-        break;
+    if (isAtBottom) {
+      activeId = dots[dots.length - 1].messageId;
+    } else {
+      for (let i = 0; i < dots.length; i++) {
+        if (scrollTriggerY >= dots[i].offsetTop) {
+          activeId = dots[i].messageId;
+        } else {
+          break;
+        }
       }
     }
 
@@ -295,11 +310,20 @@ export default function MessageScrollTimeline({
             width: '170px',
           }}
         >
-          <div className="bg-[#1e1e20] text-white border border-[#3c4043]/50 text-[11px] font-normal px-2.5 py-1.5 rounded-md shadow-[0_4px_16px_rgba(0,0,0,0.5)] truncate max-w-full leading-normal">
-            <span className="font-semibold text-[#8ab4f8] mr-1.5">
-              {hoveredDot.isCreatedByUser ? 'User:' : 'Model:'}
-            </span>
-            {hoveredDot.text || '...'}
+          <div
+            className="bg-[#1e1e20] text-white border border-[#3c4043]/50 text-[11px] font-normal px-2.5 py-1.5 rounded-md shadow-[0_4px_16px_rgba(0,0,0,0.5)] max-w-full leading-normal"
+            style={{ whiteSpace: 'normal', maxWidth: '210px' }}
+          >
+            <div className="truncate">
+              <span className="font-semibold text-[#8ab4f8] mr-1">User:</span>
+              {hoveredDot.text || '(file/image)'}
+            </div>
+            {hoveredDot.aiResponseText && (
+              <div className="truncate mt-0.5 opacity-70">
+                <span className="font-semibold text-[#81c995] mr-1">Model:</span>
+                {hoveredDot.aiResponseText}
+              </div>
+            )}
           </div>
           {/* Arrow pointing right towards the dot */}
           <div className="w-1.5 h-1.5 rotate-45 border-t border-r border-[#3c4043]/50 bg-[#1e1e20] -mr-1 z-10" />

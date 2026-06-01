@@ -5,8 +5,8 @@ import { MoreHorizontal, Trash2, GitFork, ClipboardType } from 'lucide-react';
 import type { TConversation, TMessage, TFeedback } from 'librechat-data-provider';
 import { request, QueryKeys, ForkOptions } from 'librechat-data-provider';
 import { EditIcon, Clipboard, CheckMark, ContinueIcon, RegenerateIcon, useToastContext } from '@librechat/client';
-import { useGenerationsByLatest, useLocalize, useNavigateToConvo } from '~/hooks';
-import { useForkConvoMutation } from '~/data-provider';
+import { useGenerationsByLatest, useLocalize, useNavigateToConvo, useNewConvo } from '~/hooks';
+import { useForkConvoMutation, useDeleteConversationMutation } from '~/data-provider';
 import MessageAudio from './MessageAudio';
 import Feedback from './Feedback';
 import { cn } from '~/utils';
@@ -154,6 +154,16 @@ const HoverButtons = ({
   const queryClient = useQueryClient();
   const { navigateToConvo } = useNavigateToConvo();
   const { showToast } = useToastContext();
+  const { newConversation } = useNewConvo();
+  const deleteConvo = useDeleteConversationMutation({
+    onSuccess: () => {
+      newConversation();
+      showToast({
+        message: localize('com_ui_delete_success') || 'Conversación eliminada',
+        status: 'success',
+      });
+    },
+  });
 
   const [isCopied, setIsCopied] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -260,9 +270,26 @@ const HoverButtons = ({
     if (!confirmed) return;
 
     try {
+      // Check if this is the last message before deleting
+      const currentMessages = queryClient.getQueryData<TMessage[]>(
+        [QueryKeys.messages, conversation.conversationId]
+      ) || [];
+      const remainingCount = currentMessages.filter(
+        (m) => m.messageId !== message.messageId
+      ).length;
+
       await request.delete(`/api/messages/${conversation.conversationId}/${message.messageId}`);
       
       console.log(`[HoverButtons.tsx handleDelete] deleting messageId: ${message.messageId}, parentMessageId: ${message.parentMessageId}`);
+
+      if (remainingCount === 0) {
+        // Last message deleted — remove entire conversation and redirect to new chat
+        deleteConvo.mutate({
+          conversationId: conversation.conversationId!,
+          source: 'button',
+        });
+        return;
+      }
       
       // Optimistically update React Query messages list with surgical re-linking
       queryClient.setQueryData<TMessage[]>([QueryKeys.messages, conversation.conversationId], (prev) => {
@@ -279,6 +306,9 @@ const HoverButtons = ({
             return m;
           });
       });
+
+      // Force refetch from server to get authoritative tree state
+      await queryClient.invalidateQueries([QueryKeys.messages, conversation.conversationId]);
       
       showToast({
         message: localize('com_ui_delete_success') || 'Mensaje eliminado con éxito',
@@ -407,6 +437,16 @@ export const MessageActionsDropdown = memo(({
   const { navigateToConvo } = useNavigateToConvo();
   const { showToast } = useToastContext();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const { newConversation } = useNewConvo();
+  const deleteConvo = useDeleteConversationMutation({
+    onSuccess: () => {
+      newConversation();
+      showToast({
+        message: localize('com_ui_delete_success') || 'Conversación eliminada',
+        status: 'success',
+      });
+    },
+  });
 
   const generationCapabilities = useGenerationsByLatest({
     isEditing: false,
@@ -455,9 +495,26 @@ export const MessageActionsDropdown = memo(({
     if (!confirmed) return;
 
     try {
+      // Check if this is the last message before deleting
+      const currentMessages = queryClient.getQueryData<TMessage[]>(
+        [QueryKeys.messages, conversation.conversationId]
+      ) || [];
+      const remainingCount = currentMessages.filter(
+        (m) => m.messageId !== message.messageId
+      ).length;
+
       await request.delete(`/api/messages/${conversation.conversationId}/${message.messageId}`);
       
       console.log(`[HoverButtons.tsx MessageActionsDropdown handleDelete] deleting messageId: ${message.messageId}, parentMessageId: ${message.parentMessageId}`);
+
+      if (remainingCount === 0) {
+        // Last message deleted — remove entire conversation and redirect to new chat
+        deleteConvo.mutate({
+          conversationId: conversation.conversationId!,
+          source: 'button',
+        });
+        return;
+      }
       
       // Optimistically update React Query messages list with surgical re-linking
       queryClient.setQueryData<TMessage[]>([QueryKeys.messages, conversation.conversationId], (prev) => {
@@ -474,6 +531,9 @@ export const MessageActionsDropdown = memo(({
             return m;
           });
       });
+
+      // Force refetch from server to get authoritative tree state
+      await queryClient.invalidateQueries([QueryKeys.messages, conversation.conversationId]);
       
       showToast({
         message: localize('com_ui_delete_success') || 'Mensaje eliminado con éxito',
@@ -512,7 +572,7 @@ export const MessageActionsDropdown = memo(({
   };
 
   return (
-    <div className="absolute right-2 top-2 z-30 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity duration-200">
+    <div className="absolute right-2 top-2 z-50 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity duration-200">
       <button
         onClick={() => setIsMenuOpen(!isMenuOpen)}
         title={localize('com_ui_more_actions') || 'More actions'}
