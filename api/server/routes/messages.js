@@ -407,35 +407,43 @@ router.delete('/:conversationId/:messageId', validateMessageReq, async (req, res
     const Message = mongoose.models.Message;
     const Convo = mongoose.models.Conversation;
 
-    // Find the message to delete
+    console.log('Object.keys(mongoose.models):', Object.keys(mongoose.models));
+    logger.info(`[messages.js DELETE] Object.keys(mongoose.models): ${JSON.stringify(Object.keys(mongoose.models))}`);
+
+    // 1. Find the message to delete before deleting it, to retrieve parentMessageId and _id
     const messageToDelete = await Message.findOne({ messageId, conversationId, user: req.user.id });
+    
     if (messageToDelete) {
-      const dbParentId = messageToDelete.parentMessageId;
-      logger.info(`[messages.js DELETE] deleting messageId: ${messageId}, parentMessageId in DB: ${dbParentId}`);
+      const parentId = messageToDelete.parentMessageId;
+      logger.info(`[messages.js DELETE] Found message to delete: ${messageId}, parentMessageId: ${parentId}`);
 
-      let parentId = dbParentId;
-      if (!parentId) {
-        logger.warn(`[messages.js DELETE] parentMessageId was falsy for messageId: ${messageId}. Defaulting to sentinel.`);
-        parentId = '00000000-0000-0000-0000-000000000000';
-      }
+      // 2. Perform the deletion using the native db.deleteMessages function (this triggers pre('deleteMany') hook for MeiliSearch)
+      const deleteResult = await db.deleteMessages({ messageId, conversationId, user: req.user.id });
+      console.log('deleteResult:', deleteResult);
+      logger.info(`[messages.js DELETE] deleteResult: ${JSON.stringify(deleteResult)}`);
 
-      // Re-link direct children to the grandparent parentMessageId (surgical deletion)
-      await Message.updateMany(
-        { parentMessageId: messageId, conversationId, user: req.user.id },
-        { $set: { parentMessageId: parentId } }
-      );
-
-      // Find the Object ID of the message to delete so we can remove it from the Conversation messages list
-      const dbMessage = await Message.findOne({ messageId, conversationId, user: req.user.id }, '_id');
-      if (dbMessage && Convo) {
-        await Convo.updateOne(
-          { conversationId, user: req.user.id },
-          { $pull: { messages: dbMessage._id } }
+      // 3. Only if the deletion succeeded (deletedCount > 0), perform re-linking and pulling
+      if (deleteResult && deleteResult.deletedCount > 0) {
+        // Re-link direct children to the grandparent parentMessageId (surgical deletion)
+        const updateChildrenResult = await Message.updateMany(
+          { parentMessageId: messageId, conversationId, user: req.user.id },
+          { $set: { parentMessageId: parentId } }
         );
-      }
+        logger.info(`[messages.js DELETE] Re-linked children to parentId ${parentId}. Update result: ${JSON.stringify(updateChildrenResult)}`);
 
-      // Delete the target message itself using the raw Mongoose model (fully tested and safe)
-      await Message.deleteOne({ messageId, conversationId, user: req.user.id });
+        // Pull the deleted message Object ID from the Conversation messages list
+        if (Convo && messageToDelete._id) {
+          const pullResult = await Convo.updateOne(
+            { conversationId, user: req.user.id },
+            { $pull: { messages: messageToDelete._id } }
+          );
+          logger.info(`[messages.js DELETE] Pulled message ID from Conversation messages array. Pull result: ${JSON.stringify(pullResult)}`);
+        }
+      } else {
+        logger.warn(`[messages.js DELETE] deleteResult indicated no message was deleted: ${JSON.stringify(deleteResult)}. Skipping child re-linking and conversation pulling.`);
+      }
+    } else {
+      logger.warn(`[messages.js DELETE] Message to delete not found: messageId: ${messageId}, conversationId: ${conversationId}`);
     }
 
     res.status(204).send();
