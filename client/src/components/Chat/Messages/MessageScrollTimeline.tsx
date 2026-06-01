@@ -71,6 +71,18 @@ export default function MessageScrollTimeline({
       return;
     }
 
+    // Flatten the nested messages tree recursively into a flat array
+    const flatMessages: TMessage[] = [];
+    const flatten = (nodes: TMessage[]) => {
+      for (const node of nodes) {
+        flatMessages.push(node);
+        if (node.children && node.children.length > 0) {
+          flatten(node.children);
+        }
+      }
+    };
+    flatten(messages);
+
     const newDots: TimelineDot[] = [];
     const messageElements = scrollContainer.querySelectorAll('.message-render');
 
@@ -78,7 +90,7 @@ export default function MessageScrollTimeline({
       const messageId = el.getAttribute('id');
       if (!messageId) return;
 
-      const foundMsg = messages.find((m) => m.messageId === messageId);
+      const foundMsg = flatMessages.find((m) => m.messageId === messageId);
       if (!foundMsg) return;
 
       // offsetTop of the element inside scroll container

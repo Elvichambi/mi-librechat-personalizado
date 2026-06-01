@@ -405,29 +405,30 @@ router.delete('/:conversationId/:messageId', validateMessageReq, async (req, res
 
     const mongoose = require('mongoose');
     const Message = mongoose.models.Message;
+    const Convo = mongoose.models.Conversation;
 
-    // Find the message to delete first
+    // Find the message to delete
     const messageToDelete = await Message.findOne({ messageId, conversationId, user: req.user.id });
     if (messageToDelete) {
-      // Recursively gather all descendant message IDs to delete
-      const idsToDelete = [messageId];
-      let queue = [messageId];
-      
-      while (queue.length > 0) {
-        const currentId = queue.shift();
-        const children = await Message.find(
-          { parentMessageId: currentId, conversationId, user: req.user.id },
-          'messageId'
+      const parentId = messageToDelete.parentMessageId || '00000000-0000-0000-0000-000000000000';
+
+      // Re-link direct children to the grandparent parentMessageId (surgical deletion)
+      await Message.updateMany(
+        { parentMessageId: messageId, conversationId, user: req.user.id },
+        { $set: { parentMessageId: parentId } }
+      );
+
+      // Find the Object ID of the message to delete so we can remove it from the Conversation messages list
+      const dbMessage = await Message.findOne({ messageId, conversationId, user: req.user.id }, '_id');
+      if (dbMessage && Convo) {
+        await Convo.updateOne(
+          { conversationId, user: req.user.id },
+          { $pull: { messages: dbMessage._id } }
         );
-        const childIds = children.map((c) => c.messageId);
-        if (childIds.length > 0) {
-          idsToDelete.push(...childIds);
-          queue.push(...childIds);
-        }
       }
 
-      // Delete all messages and their descendants using LibreChat's native db wrapper
-      await db.deleteMessages({ messageId: { $in: idsToDelete }, conversationId, user: req.user.id });
+      // Delete the target message itself using LibreChat's native db wrapper
+      await db.deleteMessages({ messageId, conversationId, user: req.user.id });
     }
 
     res.status(204).send();

@@ -262,26 +262,20 @@ const HoverButtons = ({
     try {
       await request.delete(`/api/messages/${conversation.conversationId}/${message.messageId}`);
       
-      // Optimistically update React Query messages list with strict cascade deletion of all descendants
+      // Optimistically update React Query messages list with surgical re-linking
       queryClient.setQueryData<TMessage[]>([QueryKeys.messages, conversation.conversationId], (prev) => {
         if (!prev) return prev;
         
-        const idsToDelete = new Set<string>([message.messageId]);
-        let searchMore = true;
+        const parentId = message.parentMessageId || '00000000-0000-0000-0000-000000000000';
         
-        while (searchMore) {
-          const sizeBefore = idsToDelete.size;
-          prev.forEach((m) => {
-            if (m.parentMessageId && idsToDelete.has(m.parentMessageId)) {
-              idsToDelete.add(m.messageId);
+        return prev
+          .filter((m) => m.messageId !== message.messageId)
+          .map((m) => {
+            if (m.parentMessageId === message.messageId) {
+              return { ...m, parentMessageId: parentId };
             }
+            return m;
           });
-          if (idsToDelete.size === sizeBefore) {
-            searchMore = false;
-          }
-        }
-        
-        return prev.filter((m) => !idsToDelete.has(m.messageId));
       });
       
       showToast({
@@ -461,26 +455,20 @@ export const MessageActionsDropdown = memo(({
     try {
       await request.delete(`/api/messages/${conversation.conversationId}/${message.messageId}`);
       
-      // Optimistically update React Query messages list with strict cascade deletion of all descendants
+      // Optimistically update React Query messages list with surgical re-linking
       queryClient.setQueryData<TMessage[]>([QueryKeys.messages, conversation.conversationId], (prev) => {
         if (!prev) return prev;
         
-        const idsToDelete = new Set<string>([message.messageId]);
-        let searchMore = true;
+        const parentId = message.parentMessageId || '00000000-0000-0000-0000-000000000000';
         
-        while (searchMore) {
-          const sizeBefore = idsToDelete.size;
-          prev.forEach((m) => {
-            if (m.parentMessageId && idsToDelete.has(m.parentMessageId)) {
-              idsToDelete.add(m.messageId);
+        return prev
+          .filter((m) => m.messageId !== message.messageId)
+          .map((m) => {
+            if (m.parentMessageId === message.messageId) {
+              return { ...m, parentMessageId: parentId };
             }
+            return m;
           });
-          if (idsToDelete.size === sizeBefore) {
-            searchMore = false;
-          }
-        }
-        
-        return prev.filter((m) => !idsToDelete.has(m.messageId));
       });
       
       showToast({
