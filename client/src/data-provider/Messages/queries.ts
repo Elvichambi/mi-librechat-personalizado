@@ -15,12 +15,14 @@ export const useGetMessagesByConvoId = <TData = t.TMessage[]>(
     [QueryKeys.messages, id],
     async () => {
       const result = await dataService.getMessagesByConvoId(id);
+      console.log(`[useGetMessagesByConvoId] queryFn called for convo ${id}, server returned ${result?.length} messages, path: "${location.pathname}"`);
       if (!location.pathname.includes('/c/new') && result?.length === 1) {
         const currentMessages = queryClient.getQueryData<t.TMessage[]>([QueryKeys.messages, id]);
         if (currentMessages?.length === 1) {
           return result;
         }
         if (currentMessages && currentMessages?.length > 1) {
+          console.warn(`[useGetMessagesByConvoId] GUARD ACTIVATED: server returned ${result?.length} but cache has ${currentMessages?.length}. Returning CACHE (stale data). This may block deletion UI updates!`);
           logger.warn(
             'messages',
             `Messages query for convo ${id} returned fewer than cache; path: "${location.pathname}"`,
@@ -30,6 +32,7 @@ export const useGetMessagesByConvoId = <TData = t.TMessage[]>(
           return currentMessages;
         }
       }
+      console.log(`[useGetMessagesByConvoId] Returning server result (${result?.length} messages)`);
       return result;
     },
     {
