@@ -262,6 +262,8 @@ const HoverButtons = ({
     try {
       await request.delete(`/api/messages/${conversation.conversationId}/${message.messageId}`);
       
+      console.log(`[HoverButtons.tsx handleDelete] deleting messageId: ${message.messageId}, parentMessageId: ${message.parentMessageId}`);
+      
       // Optimistically update React Query messages list with surgical re-linking
       queryClient.setQueryData<TMessage[]>([QueryKeys.messages, conversation.conversationId], (prev) => {
         if (!prev) return prev;
@@ -454,6 +456,8 @@ export const MessageActionsDropdown = memo(({
 
     try {
       await request.delete(`/api/messages/${conversation.conversationId}/${message.messageId}`);
+      
+      console.log(`[HoverButtons.tsx MessageActionsDropdown handleDelete] deleting messageId: ${message.messageId}, parentMessageId: ${message.parentMessageId}`);
       
       // Optimistically update React Query messages list with surgical re-linking
       queryClient.setQueryData<TMessage[]>([QueryKeys.messages, conversation.conversationId], (prev) => {

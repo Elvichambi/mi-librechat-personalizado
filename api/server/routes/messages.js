@@ -410,7 +410,14 @@ router.delete('/:conversationId/:messageId', validateMessageReq, async (req, res
     // Find the message to delete
     const messageToDelete = await Message.findOne({ messageId, conversationId, user: req.user.id });
     if (messageToDelete) {
-      const parentId = messageToDelete.parentMessageId || '00000000-0000-0000-0000-000000000000';
+      const dbParentId = messageToDelete.parentMessageId;
+      logger.info(`[messages.js DELETE] deleting messageId: ${messageId}, parentMessageId in DB: ${dbParentId}`);
+
+      let parentId = dbParentId;
+      if (!parentId) {
+        logger.warn(`[messages.js DELETE] parentMessageId was falsy for messageId: ${messageId}. Defaulting to sentinel.`);
+        parentId = '00000000-0000-0000-0000-000000000000';
+      }
 
       // Re-link direct children to the grandparent parentMessageId (surgical deletion)
       await Message.updateMany(
