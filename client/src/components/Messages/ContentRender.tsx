@@ -8,7 +8,7 @@ import { cn, getHeaderPrefixForScreenReader, getMessageAriaLabel } from '~/utils
 import ContentParts from '~/components/Chat/Messages/Content/ContentParts';
 import PlaceholderRow from '~/components/Chat/Messages/ui/PlaceholderRow';
 import SiblingSwitch from '~/components/Chat/Messages/SiblingSwitch';
-import HoverButtons from '~/components/Chat/Messages/HoverButtons';
+import HoverButtons, { MessageActionsDropdown } from '~/components/Chat/Messages/HoverButtons';
 import MessageIcon from '~/components/Chat/Messages/MessageIcon';
 import SubRow from '~/components/Chat/Messages/SubRow';
 import { fontSizeAtom } from '~/store/fontSize';
@@ -181,7 +181,7 @@ const ContentRender = memo(function ContentRender({
         baseClasses.common,
         baseClasses.chat,
         conditionalClasses.focus,
-        'message-render',
+        'message-render relative rounded-2xl p-3.5 transition-all duration-300 hover:bg-black/[0.04] dark:hover:bg-white/[0.06] hover:ring-1 hover:ring-black/[0.08] dark:hover:ring-white/[0.08]',
       )}
     >
       {!hasParallelContent && (
@@ -251,6 +251,12 @@ const ContentRender = memo(function ContentRender({
           )}
         </div>
       </div>
+      <MessageActionsDropdown
+        message={msg}
+        conversation={conversation ?? null}
+        latestMessageId={latestMessageId}
+        copyToClipboard={copyToClipboard}
+      />
     </div>
   );
 }, areContentRenderPropsEqual);

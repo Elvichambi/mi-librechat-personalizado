@@ -27,6 +27,24 @@ export default function MessageScrollTimeline({
   const [showTimeline, setShowTimeline] = useState(false);
 
   const containerRef = useRef<HTMLDivElement>(null);
+  const [shouldOverflow, setShouldOverflow] = useState(false);
+  const MIN_GAP = 16; // px
+  const DOT_SIZE = 28; // px (el tamaño real de la caja del botón con padding de 1.5 es ~28px)
+
+  // Track dots count stably to avoid recreating observers inside the main useEffect
+  const dotsLengthRef = useRef(dots.length);
+  useEffect(() => {
+    dotsLengthRef.current = dots.length;
+  }, [dots.length]);
+
+  // Recalculate overflow status when dots change
+  useEffect(() => {
+    if (containerRef.current) {
+      const containerHeight = containerRef.current.clientHeight;
+      const totalNeeded = dots.length * DOT_SIZE + Math.max(0, dots.length - 1) * MIN_GAP;
+      setShouldOverflow(totalNeeded > containerHeight);
+    }
+  }, [dots.length, DOT_SIZE, MIN_GAP]);
 
   // Safely extract text snippet from a message
   const getMessageSnippet = (msg: TMessage): string => {
@@ -100,12 +118,13 @@ export default function MessageScrollTimeline({
         (m) => m.parentMessageId === foundMsg.messageId && !m.isCreatedByUser
       );
 
-      // offsetTop of the element inside scroll container
+      // Posición del mensaje relativa al contenido del contenedor de scroll
       const htmlEl = el as HTMLElement;
-      const offsetTop = htmlEl.offsetTop;
+      const containerRect = scrollContainer.getBoundingClientRect();
+      const elRect = htmlEl.getBoundingClientRect();
+      const offsetTop = elRect.top - containerRect.top + scrollContainer.scrollTop;
       
       // relative top percentage (e.g. 5% to 95% of scrollHeight)
-      // We clamp or pad a tiny bit so dots do not sit directly at the absolute top/bottom edge
       const relativeTopPercent = Math.max(
         3,
         Math.min(97, (offsetTop / scrollHeight) * 100)
@@ -145,22 +164,22 @@ export default function MessageScrollTimeline({
     if (!scrollContainer || dots.length === 0) return;
 
     const { scrollTop, clientHeight, scrollHeight } = scrollContainer;
-    // We consider a message visible if scroll is near its offsetTop
-    // We offset by clientHeight / 3 for visual comfort
     const scrollTriggerY = scrollTop + clientHeight / 3;
 
-    // If scrolled near the very bottom, force last dot active
+    // Si scrolled al fondo total, iluminar el último punto directamente
     const isAtBottom = scrollTop + clientHeight >= scrollHeight - 30;
 
     let activeId = dots[0].messageId;
     if (isAtBottom) {
       activeId = dots[dots.length - 1].messageId;
     } else {
+      let minDistance = Infinity;
       for (let i = 0; i < dots.length; i++) {
-        if (scrollTriggerY >= dots[i].offsetTop) {
+        // Encontrar el mensaje con menor distancia absoluta a la línea de lectura focal
+        const distance = Math.abs(dots[i].offsetTop - scrollTriggerY);
+        if (distance < minDistance) {
+          minDistance = distance;
           activeId = dots[i].messageId;
-        } else {
-          break;
         }
       }
     }
@@ -184,46 +203,96 @@ export default function MessageScrollTimeline({
     const scrollContainer = scrollableRef.current;
     if (!scrollContainer) return;
 
-    recalculatePositions();
+    let rafId: number | null = null;
 
-    // Call on small delays to ensure React paint has completed
-    const t1 = setTimeout(recalculatePositions, 100);
-    const t2 = setTimeout(recalculatePositions, 400);
+    // Wrap recalculation in requestAnimationFrame to prevent layout thrashing
+    const scheduleRecalculate = () => {
+      if (rafId) {
+        cancelAnimationFrame(rafId);
+      }
+      rafId = requestAnimationFrame(() => {
+        recalculatePositions();
+        updateActiveDot();
+      });
+    };
 
-    // Set up resize observer to adjust positions if container sizes change
+    // Recalculate immediately
+    scheduleRecalculate();
+
+    // Create ResizeObserver for viewport, timeline container and each individual message element
     const resizeObserver = new ResizeObserver(() => {
-      recalculatePositions();
+      scheduleRecalculate();
+      if (containerRef.current) {
+        const containerHeight = containerRef.current.clientHeight;
+        const length = dotsLengthRef.current;
+        const totalNeeded = length * DOT_SIZE + Math.max(0, length - 1) * MIN_GAP;
+        setShouldOverflow(totalNeeded > containerHeight);
+      }
     });
+
+    // Observe scroll container (viewport changes)
     resizeObserver.observe(scrollContainer);
 
-    // Set up mutation observer to listen to DOM additions/deletions of message nodes
+    // Observe timeline container (to detect height changes of the timeline itself)
+    if (containerRef.current) {
+      resizeObserver.observe(containerRef.current);
+    }
+
+    // Track which elements are currently observed to avoid redundant observers
+    const observedElements = new Set<Element>();
+
+    const observeMessages = () => {
+      const messageElements = scrollContainer.querySelectorAll('.message-render');
+      messageElements.forEach((el) => {
+        if (!observedElements.has(el)) {
+          resizeObserver.observe(el);
+          observedElements.add(el);
+        }
+      });
+    };
+
+    // Initial observation of existing message elements
+    observeMessages();
+
+    // Create MutationObserver to observe when message elements are added or removed
     const mutationObserver = new MutationObserver(() => {
-      recalculatePositions();
-      updateActiveDot();
+      observeMessages();
+      scheduleRecalculate();
     });
+
     mutationObserver.observe(scrollContainer, {
       childList: true,
       subtree: true,
     });
 
-    // Watch for scroll events to update illuminated indicators
+    // Handle scroll events with requestAnimationFrame for smooth active dot highlighting
+    let scrollRafId: number | null = null;
     const handleScroll = () => {
-      updateActiveDot();
+      if (scrollRafId) {
+        cancelAnimationFrame(scrollRafId);
+      }
+      scrollRafId = requestAnimationFrame(() => {
+        updateActiveDot();
+      });
     };
     scrollContainer.addEventListener('scroll', handleScroll, { passive: true });
 
-    // Initial scroll sync
-    updateActiveDot();
+    // 50ms safety net timeout to recalculate after initial mount / chat load has painted
+    const safetyTimeout = setTimeout(scheduleRecalculate, 50);
 
     return () => {
-      clearTimeout(t1);
-      clearTimeout(t2);
+      if (rafId) {
+        cancelAnimationFrame(rafId);
+      }
+      if (scrollRafId) {
+        cancelAnimationFrame(scrollRafId);
+      }
+      clearTimeout(safetyTimeout);
       resizeObserver.disconnect();
       mutationObserver.disconnect();
       scrollContainer.removeEventListener('scroll', handleScroll);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scrollableRef, messages]);
+  }, [scrollableRef, messages, recalculatePositions, updateActiveDot, DOT_SIZE, MIN_GAP]);
 
   // Sync active dot whenever dots data is recalculated
   useEffect(() => {
@@ -248,85 +317,112 @@ export default function MessageScrollTimeline({
 
   return (
     <div
-      ref={containerRef}
-      className="absolute right-6 top-8 bottom-8 z-[25] flex flex-col items-center justify-between select-none pointer-events-none"
+      className="absolute right-8 top-8 bottom-8 z-[25] select-none pointer-events-none"
       style={{ width: '12px' }}
     >
-      {/* Subtle Vertical Track Line (centered behind the flex dots) */}
-      <div className="absolute top-0 bottom-0 w-[1px] bg-black/10 dark:bg-white/[0.08]" />
+      <style>{`
+        .no-scrollbar-timeline::-webkit-scrollbar {
+          display: none !important;
+          width: 0 !important;
+          height: 0 !important;
+        }
+        .no-scrollbar-timeline {
+          -ms-overflow-style: none !important;
+          scrollbar-width: none !important;
+        }
+      `}</style>
 
-      {/* Render Dots directly with justify-between spacing */}
-      {dots.map((dot) => {
-        const isActive = activeMessageId === dot.messageId;
-        const isHovered = hoveredDotId === dot.messageId;
+      {/* Subtle Vertical Track Line (centered behind the scrollable area) */}
+      <div className="absolute top-0 bottom-0 w-[1px] bg-black/10 dark:bg-white/[0.08] left-1/2 -translate-x-1/2" />
 
-        return (
-          <button
-            key={dot.messageId}
-            type="button"
-            onClick={() => handleDotClick(dot)}
-            onMouseEnter={(e) => {
-              setHoveredDotId(dot.messageId);
-              const rect = e.currentTarget.getBoundingClientRect();
-              const containerRect = containerRef.current?.getBoundingClientRect();
-              if (rect && containerRect) {
-                setHoverPos({
-                  top: rect.top - containerRect.top + rect.height / 2,
-                  left: -180, // Tooltip on the left
-                });
-              }
-            }}
-            onMouseLeave={() => {
-              setHoveredDotId(null);
-              setHoverPos(null);
-            }}
-            className={cn(
-              'relative flex items-center justify-center p-1.5 cursor-pointer pointer-events-auto rounded-full focus:outline-none transition-all group duration-200',
-              isActive && 'active-dot-btn'
-            )}
-          >
-            {/* Dot asset with dynamic sizing and shadows */}
-            <div
+      {/* Scrollable Track Container */}
+      <div
+        ref={containerRef}
+        className={cn(
+          "w-full h-full flex flex-col items-center pt-3 pb-3 overflow-y-auto overflow-x-hidden no-scrollbar-timeline pointer-events-auto",
+          shouldOverflow ? "gap-4 justify-start" : "justify-between"
+        )}
+      >
+        {/* Render Dots directly using Flexbox */}
+        {dots.map((dot) => {
+          const isActive = activeMessageId === dot.messageId;
+          const isHovered = hoveredDotId === dot.messageId;
+
+          return (
+            <button
+              key={dot.messageId}
+              type="button"
+              onClick={() => handleDotClick(dot)}
+              onMouseEnter={(e) => {
+                setHoveredDotId(dot.messageId);
+                const rect = e.currentTarget.getBoundingClientRect();
+                const containerRect = containerRef.current?.getBoundingClientRect();
+                if (rect && containerRect) {
+                  const containerHeight = containerRect.height;
+                  const calculatedTop = rect.top - containerRect.top + rect.height / 2;
+                  
+                  // Clamp top to keep the tooltip fully inside [50px, containerHeight - 50px] bounds
+                  // This prevents the tooltip from overflowing the bottom/top of the viewport
+                  // and triggering a browser scrollbar/layout shift flicker loop.
+                  const clampedTop = Math.max(50, Math.min(containerHeight - 50, calculatedTop));
+                  setHoverPos({
+                    top: clampedTop,
+                    left: -186, // Tooltip on the left
+                  });
+                }
+              }}
+              onMouseLeave={() => {
+                setHoveredDotId(null);
+                setHoverPos(null);
+              }}
               className={cn(
-                'w-1.5 h-1.5 rounded-full transition-all duration-300 transform-gpu',
-                isActive
-                  ? 'bg-black dark:bg-white scale-125 shadow-[0_0_8px_rgba(0,0,0,0.3)] dark:shadow-[0_0_8px_rgba(255,255,255,0.8)]'
-                  : isHovered
-                  ? 'bg-[#3b82f6] scale-150 shadow-[0_0_8px_rgba(59,130,246,0.8)]'
-                  : 'bg-black/35 dark:bg-white/20 hover:bg-black/60 dark:hover:bg-white/40'
+                'relative flex items-center justify-center p-1.5 cursor-pointer pointer-events-auto rounded-full focus:outline-none transition-all group duration-200 shrink-0',
+                isActive && 'active-dot-btn'
               )}
-            />
-          </button>
-        );
-      })}
+            >
+              {/* Dot asset with dynamic sizing and shadows */}
+              <div
+                className={cn(
+                  'w-1.5 h-1.5 rounded-full transition-all duration-300 transform-gpu',
+                  isActive
+                    ? 'bg-black dark:bg-white scale-125 shadow-[0_0_8px_rgba(0,0,0,0.3)] dark:shadow-[0_0_8px_rgba(255,255,255,0.8)]'
+                    : isHovered
+                    ? 'bg-[#3b82f6] scale-150 shadow-[0_0_8px_rgba(59,130,246,0.8)]'
+                    : 'bg-black/35 dark:bg-white/20 hover:bg-black/60 dark:hover:bg-white/40'
+                )}
+              />
+            </button>
+          );
+        })}
+      </div>
 
-      {/* Floating Tooltip Snippet (Google AI Studio style) */}
+      {/* Floating Tooltip Snippet (Google AI Studio style) - Sibling to avoid overflow clipping */}
       {hoveredDotId && hoveredDot && hoverPos && (
         <div
           className="absolute z-50 pointer-events-none select-none -translate-y-1/2 animate-fade-in flex items-center justify-end"
           style={{
             top: `${hoverPos.top}px`,
             left: `${hoverPos.left}px`,
-            width: '170px',
+            width: '180px',
           }}
         >
           <div
-            className="bg-[#1e1e20] text-white border border-[#3c4043]/50 text-[11px] font-normal px-2.5 py-1.5 rounded-md shadow-[0_4px_16px_rgba(0,0,0,0.5)] max-w-full leading-normal"
+            className="backdrop-blur-md bg-white/95 dark:bg-[#1a1a1c]/95 text-text-primary dark:text-white border border-black/10 dark:border-white/[0.08] text-[11px] font-normal px-2.5 py-1.5 rounded-lg shadow-[0_4px_16px_rgba(0,0,0,0.12)] dark:shadow-[0_4px_24px_rgba(0,0,0,0.6)] max-w-full leading-normal"
             style={{ whiteSpace: 'normal', maxWidth: '210px' }}
           >
             <div className="truncate">
-              <span className="font-semibold text-[#8ab4f8] mr-1">User:</span>
+              <span className="font-semibold text-[#1a73e8] dark:text-[#8ab4f8] mr-1">User:</span>
               {hoveredDot.text || '(file/image)'}
             </div>
             {hoveredDot.aiResponseText && (
-              <div className="truncate mt-0.5 opacity-70">
-                <span className="font-semibold text-[#81c995] mr-1">Model:</span>
+              <div className="truncate mt-0.5 opacity-80 dark:opacity-75">
+                <span className="font-semibold text-[#137333] dark:text-[#81c995] mr-1">Model:</span>
                 {hoveredDot.aiResponseText}
               </div>
             )}
           </div>
           {/* Arrow pointing right towards the dot */}
-          <div className="w-1.5 h-1.5 rotate-45 border-t border-r border-[#3c4043]/50 bg-[#1e1e20] -mr-1 z-10" />
+          <div className="w-1.5 h-1.5 rotate-45 border-t border-r border-black/10 dark:border-white/[0.08] bg-white dark:bg-[#1a1a1c] -mr-1 z-10" />
         </div>
       )}
     </div>

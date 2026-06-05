@@ -190,7 +190,7 @@ const MessageRender = memo(function MessageRender({
         baseClasses.common,
         baseClasses.chat,
         conditionalClasses.focus,
-        'message-render dark:hover:bg-white/[0.015] hover:bg-black/[0.01] rounded-2xl p-3.5 transition-all duration-300',
+        'message-render relative rounded-2xl p-3.5 transition-all duration-300 hover:bg-black/[0.04] dark:hover:bg-white/[0.06] hover:ring-1 hover:ring-black/[0.08] dark:hover:ring-white/[0.08]',
       )}
     >
       {!hasParallelContent && (
@@ -214,13 +214,6 @@ const MessageRender = memo(function MessageRender({
             {messageLabel}
           </h2>
         )}
-
-        <MessageActionsDropdown
-          message={msg}
-          conversation={conversation ?? null}
-          latestMessageId={latestMessageId}
-          copyToClipboard={copyToClipboard}
-        />
 
         <div className="flex flex-col gap-1">
           <div className="flex min-h-[20px] max-w-full flex-grow flex-col gap-0">
@@ -268,6 +261,13 @@ const MessageRender = memo(function MessageRender({
           )}
         </div>
       </div>
+
+      <MessageActionsDropdown
+        message={msg}
+        conversation={conversation ?? null}
+        latestMessageId={latestMessageId}
+        copyToClipboard={copyToClipboard}
+      />
     </div>
   );
 }, areMessageRenderPropsEqual);

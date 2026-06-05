@@ -1,5 +1,5 @@
 import React, { useState, useMemo, memo } from 'react';
-import { useRecoilState } from 'recoil';
+import { useRecoilState, useSetRecoilState } from 'recoil';
 import { useQueryClient } from '@tanstack/react-query';
 import { MoreHorizontal, Trash2, GitFork, ClipboardType } from 'lucide-react';
 import type { TConversation, TMessage, TFeedback } from 'librechat-data-provider';
@@ -12,6 +12,7 @@ import Feedback from './Feedback';
 import { cn } from '~/utils';
 import store from '~/store';
 
+let deleteQueue: Promise<void> = Promise.resolve();
 
 type THoverButtons = {
   isEditing: boolean;
@@ -168,6 +169,7 @@ const HoverButtons = ({
   const [isCopied, setIsCopied] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [TextToSpeech] = useRecoilState<boolean>(store.textToSpeech);
+  const setLatestMessage = useSetRecoilState(store.latestMessageFamily(index));
 
   const endpoint = useMemo(() => {
     if (!conversation) {
@@ -269,69 +271,70 @@ const HoverButtons = ({
     );
     if (!confirmed) return;
 
-    try {
-      // DIAGNOSTIC: Log the exact conversationId used for the cache key
-      console.log('[HoverButtons handleDelete] cache key convoId:', conversation.conversationId);
-      console.log('[HoverButtons handleDelete] deleting messageId:', message.messageId, 'parentMessageId:', message.parentMessageId);
+    const convoId = conversation.conversationId;
+    const messageId = message.messageId;
 
-      // Check if this is the last message before deleting
-      const currentMessages = queryClient.getQueryData<TMessage[]>(
-        [QueryKeys.messages, conversation.conversationId]
-      ) || [];
-      console.log('[HoverButtons handleDelete] currentMessages in cache:', currentMessages.length);
-      const remainingCount = currentMessages.filter(
-        (m) => m.messageId !== message.messageId
-      ).length;
-      console.log('[HoverButtons handleDelete] remainingCount after filter:', remainingCount);
+    const currentMessages =
+      queryClient.getQueryData<TMessage[]>([QueryKeys.messages, convoId]) || [];
+    const remainingCount = currentMessages.filter((m) => m.messageId !== messageId).length;
 
-      if (remainingCount === 0) {
-        // Last message deleted — remove entire conversation and redirect to new chat
-        deleteConvo.mutate({
-          conversationId: conversation.conversationId!,
-          source: 'button',
-          });
-        return;
-      }
-
-      // 1. Optimistic update: surgically remove from cache and re-link children INSTANTLY
-      queryClient.setQueryData<TMessage[]>([QueryKeys.messages, conversation.conversationId], (prev) => {
-        if (!prev) return prev;
-        const parentId = message.parentMessageId || '00000000-0000-0000-0000-000000000000';
-        const updated = prev
-          .filter((m) => m.messageId !== message.messageId)
-          .map((m) => {
-            if (m.parentMessageId === message.messageId) {
-              return { ...m, parentMessageId: parentId };
-            }
-            return m;
-          });
-        console.log('[HoverButtons handleDelete] setQueryData updated cache, new length:', updated.length);
-        return updated;
-      });
-
-      // Show toast immediately so the user gets instant feedback
-      showToast({
-        message: localize('com_ui_delete_success') || 'Mensaje eliminado con éxito',
-        status: 'success',
-      });
-
-      // 2. Delete on server in the background
-      await request.delete(`/api/messages/${conversation.conversationId}/${message.messageId}`);
-      console.log('[HoverButtons handleDelete] Server delete confirmed (204)');
-
-      // 3. Invalidate queries in the background to ensure authoritative sync
-      queryClient.invalidateQueries({
-        queryKey: [QueryKeys.messages, conversation.conversationId],
-        refetchType: 'active',
-      });
-      console.log('[HoverButtons handleDelete] invalidateQueries triggered in background');
-    } catch (err) {
-      console.error('[HoverButtons handleDelete] Error deleting message:', err);
-      showToast({
-        message: localize('com_ui_delete_error') || 'Error al eliminar el mensaje',
-        status: 'error',
-      });
+    // Si era el último mensaje -> borrar la conversación entera y abrir chat nuevo
+    if (remainingCount === 0) {
+      deleteConvo.mutate({ conversationId: convoId!, source: 'button' });
+      return;
     }
+
+    // INSTANTÁNEO: quitarlo de la pantalla ahora mismo (igual que antes)
+    queryClient.setQueryData<TMessage[]>([QueryKeys.messages, convoId], (prev) => {
+      if (!prev) return prev;
+      const target = prev.find((m) => m.messageId === messageId);
+      const parentId = target?.parentMessageId || '00000000-0000-0000-0000-000000000000';
+      return prev
+        .filter((m) => m.messageId !== messageId)
+        .map((m) => (m.parentMessageId === messageId ? { ...m, parentMessageId: parentId } : m));
+    });
+
+    // Recalcular la última hoja viva y fijar latestMessage,
+    // para que el próximo mensaje se conecte bien y no se pierda el contexto.
+    const afterDelete =
+      queryClient.getQueryData<TMessage[]>([QueryKeys.messages, convoId]) || [];
+    const parentIds = new Set(
+      afterDelete.map((m) => m.parentMessageId).filter(Boolean),
+    );
+    const newLeaf = afterDelete
+      .filter((m) => !parentIds.has(m.messageId))
+      .reduce<TMessage | null>(
+        (best, m) =>
+          !best ||
+          new Date(m.createdAt || 0).getTime() > new Date(best.createdAt || 0).getTime()
+            ? m
+            : best,
+        null,
+      );
+    if (newLeaf) {
+      setLatestMessage({ ...newLeaf });
+    }
+
+    // La petición al servidor va EN FILA (una a la vez) para que no se cancelen entre sí
+    deleteQueue = deleteQueue
+      .then(async () => {
+        try {
+          await request.delete(`/api/messages/${convoId}/${messageId}`);
+          // Éxito: la pantalla ya está bien, no hace falta nada más
+        } catch (err) {
+          console.error('[HoverButtons handleDelete] Error deleting message:', err);
+          // Falló -> recargar la verdad: el mensaje vuelve solo + aviso rojo
+          queryClient.invalidateQueries({
+            queryKey: [QueryKeys.messages, convoId],
+            refetchType: 'active',
+          });
+          showToast({
+            message: localize('com_ui_delete_error') || 'Error al eliminar el mensaje',
+            status: 'error',
+          });
+        }
+      })
+      .catch(() => {});
   };
 
   const handleFork = () => {
@@ -449,6 +452,7 @@ export const MessageActionsDropdown = memo(({
   const { showToast } = useToastContext();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const { newConversation } = useNewConvo();
+  const setLatestMessage = useSetRecoilState(store.latestMessageFamily(0));
   const deleteConvo = useDeleteConversationMutation({
     onSuccess: () => {
       newConversation();
@@ -505,69 +509,70 @@ export const MessageActionsDropdown = memo(({
     );
     if (!confirmed) return;
 
-    try {
-      // DIAGNOSTIC: Log the exact conversationId used for the cache key
-      console.log('[MessageActionsDropdown handleDelete] cache key convoId:', conversation.conversationId);
-      console.log('[MessageActionsDropdown handleDelete] deleting messageId:', message.messageId, 'parentMessageId:', message.parentMessageId);
+    const convoId = conversation.conversationId;
+    const messageId = message.messageId;
 
-      // Check if this is the last message before deleting
-      const currentMessages = queryClient.getQueryData<TMessage[]>(
-        [QueryKeys.messages, conversation.conversationId]
-      ) || [];
-      console.log('[MessageActionsDropdown handleDelete] currentMessages in cache:', currentMessages.length);
-      const remainingCount = currentMessages.filter(
-        (m) => m.messageId !== message.messageId
-      ).length;
-      console.log('[MessageActionsDropdown handleDelete] remainingCount after filter:', remainingCount);
+    const currentMessages =
+      queryClient.getQueryData<TMessage[]>([QueryKeys.messages, convoId]) || [];
+    const remainingCount = currentMessages.filter((m) => m.messageId !== messageId).length;
 
-      if (remainingCount === 0) {
-        // Last message deleted — remove entire conversation and redirect to new chat
-        deleteConvo.mutate({
-          conversationId: conversation.conversationId!,
-          source: 'button',
-        });
-        return;
-      }
-
-      // 1. Optimistic update: surgically remove from cache and re-link children INSTANTLY
-      queryClient.setQueryData<TMessage[]>([QueryKeys.messages, conversation.conversationId], (prev) => {
-        if (!prev) return prev;
-        const parentId = message.parentMessageId || '00000000-0000-0000-0000-000000000000';
-        const updated = prev
-          .filter((m) => m.messageId !== message.messageId)
-          .map((m) => {
-            if (m.parentMessageId === message.messageId) {
-              return { ...m, parentMessageId: parentId };
-            }
-            return m;
-          });
-        console.log('[MessageActionsDropdown handleDelete] setQueryData updated cache, new length:', updated.length);
-        return updated;
-      });
-
-      // Show toast immediately so the user gets instant feedback
-      showToast({
-        message: localize('com_ui_delete_success') || 'Mensaje eliminado con éxito',
-        status: 'success',
-      });
-
-      // 2. Delete on server in the background
-      await request.delete(`/api/messages/${conversation.conversationId}/${message.messageId}`);
-      console.log('[MessageActionsDropdown handleDelete] Server delete confirmed (204)');
-
-      // 3. Invalidate queries in the background to ensure authoritative sync
-      queryClient.invalidateQueries({
-        queryKey: [QueryKeys.messages, conversation.conversationId],
-        refetchType: 'active',
-      });
-      console.log('[MessageActionsDropdown handleDelete] invalidateQueries triggered in background');
-    } catch (err) {
-      console.error('[MessageActionsDropdown handleDelete] Error deleting message:', err);
-      showToast({
-        message: localize('com_ui_delete_error') || 'Error al eliminar el mensaje',
-        status: 'error',
-      });
+    // Si era el último mensaje -> borrar la conversación entera y abrir chat nuevo
+    if (remainingCount === 0) {
+      deleteConvo.mutate({ conversationId: convoId!, source: 'button' });
+      return;
     }
+
+    // INSTANTÁNEO: quitarlo de la pantalla ahora mismo (igual que antes)
+    queryClient.setQueryData<TMessage[]>([QueryKeys.messages, convoId], (prev) => {
+      if (!prev) return prev;
+      const target = prev.find((m) => m.messageId === messageId);
+      const parentId = target?.parentMessageId || '00000000-0000-0000-0000-000000000000';
+      return prev
+        .filter((m) => m.messageId !== messageId)
+        .map((m) => (m.parentMessageId === messageId ? { ...m, parentMessageId: parentId } : m));
+    });
+
+    // Recalcular la última hoja viva y fijar latestMessage,
+    // para que el próximo mensaje se conecte bien y no se pierda el contexto.
+    const afterDelete =
+      queryClient.getQueryData<TMessage[]>([QueryKeys.messages, convoId]) || [];
+    const parentIds = new Set(
+      afterDelete.map((m) => m.parentMessageId).filter(Boolean),
+    );
+    const newLeaf = afterDelete
+      .filter((m) => !parentIds.has(m.messageId))
+      .reduce<TMessage | null>(
+        (best, m) =>
+          !best ||
+          new Date(m.createdAt || 0).getTime() > new Date(best.createdAt || 0).getTime()
+            ? m
+            : best,
+        null,
+      );
+    if (newLeaf) {
+      setLatestMessage({ ...newLeaf });
+    }
+
+    // La petición al servidor va EN FILA (una a la vez) para que no se cancelen entre sí
+    deleteQueue = deleteQueue
+      .then(async () => {
+        try {
+          await request.delete(`/api/messages/${convoId}/${messageId}`);
+          // Éxito: la pantalla ya está bien, no hace falta nada más
+        } catch (err) {
+          console.error('[MessageActionsDropdown handleDelete] Error deleting message:', err);
+          // Falló -> recargar la verdad: el mensaje vuelve solo + aviso rojo
+          queryClient.invalidateQueries({
+            queryKey: [QueryKeys.messages, convoId],
+            refetchType: 'active',
+          });
+          showToast({
+            message: localize('com_ui_delete_error') || 'Error al eliminar el mensaje',
+            status: 'error',
+          });
+        }
+      })
+      .catch(() => {});
   };
 
   const handleCopyMarkdown = () => {
@@ -599,7 +604,7 @@ export const MessageActionsDropdown = memo(({
         onClick={() => setIsMenuOpen(!isMenuOpen)}
         title={localize('com_ui_more_actions') || 'More actions'}
         className={cn(
-          'hover-button rounded-lg p-1.5 text-text-secondary-alt bg-[#202124]/90 dark:bg-[#1a1a1c]/95 border border-[#3c4043]/30 shadow-sm',
+          'hover-button rounded-lg p-1.5 text-text-secondary-alt bg-white/80 dark:bg-[#1a1a1c]/80 backdrop-blur-md border border-black/[0.08] dark:border-white/[0.08] shadow-[0_2px_8px_rgba(0,0,0,0.06)]',
           'hover:text-text-primary hover:bg-surface-hover',
           'focus-visible:ring-2 focus-visible:ring-black dark:focus-visible:ring-white focus-visible:outline-none',
           isMenuOpen && 'active text-text-primary bg-surface-hover'
@@ -611,14 +616,14 @@ export const MessageActionsDropdown = memo(({
       {isMenuOpen && (
         <>
           <div className="fixed inset-0 z-40 bg-transparent" onClick={() => setIsMenuOpen(false)} />
-          <div className="absolute right-0 top-full mt-1.5 z-50 w-40 rounded-md bg-[#1e1e20] border border-[#3c4043]/50 shadow-[0_8px_30px_rgba(0,0,0,0.6)] py-1.5 flex flex-col select-none">
+          <div className="absolute right-0 top-full mt-1.5 z-50 w-40 rounded-lg bg-white/95 dark:bg-[#1a1a1c]/95 backdrop-blur-md border border-black/10 dark:border-white/[0.08] shadow-[0_8px_32px_rgba(0,0,0,0.12)] dark:shadow-[0_8px_32px_rgba(0,0,0,0.5)] py-1.5 flex flex-col select-none animate-in fade-in slide-in-from-top-1 duration-150">
             <button
               type="button"
               onClick={() => {
                 handleDelete();
                 setIsMenuOpen(false);
               }}
-              className="w-full text-left px-3.5 py-2 text-[13px] text-red-400 hover:bg-white/[0.06] transition-colors flex items-center gap-2.5 font-medium shrink-0"
+              className="w-full text-left px-3.5 py-2 text-[13px] text-red-500 dark:text-red-400 hover:bg-red-500/[0.05] dark:hover:bg-red-500/[0.1] transition-colors flex items-center gap-2.5 font-medium shrink-0"
             >
               <Trash2 size="15" className="shrink-0" />
               <span>Eliminar</span>
@@ -631,7 +636,7 @@ export const MessageActionsDropdown = memo(({
                   handleFork();
                   setIsMenuOpen(false);
                 }}
-                className="w-full text-left px-3.5 py-2 text-[13px] text-text-primary hover:text-text-primary hover:bg-white/[0.06] transition-colors flex items-center gap-2.5 font-normal shrink-0"
+                className="w-full text-left px-3.5 py-2 text-[13px] text-text-primary dark:text-gray-200 hover:bg-black/[0.04] dark:hover:bg-white/[0.06] transition-colors flex items-center gap-2.5 font-normal shrink-0"
               >
                 <GitFork size="15" className="shrink-0" />
                 <span>Bifurcar</span>
@@ -644,7 +649,7 @@ export const MessageActionsDropdown = memo(({
                 handleCopyMarkdown();
                 setIsMenuOpen(false);
               }}
-              className="w-full text-left px-3.5 py-2 text-[13px] text-text-primary hover:text-text-primary hover:bg-white/[0.06] transition-colors flex items-center gap-2.5 font-normal shrink-0"
+              className="w-full text-left px-3.5 py-2 text-[13px] text-text-primary dark:text-gray-200 hover:bg-black/[0.04] dark:hover:bg-white/[0.06] transition-colors flex items-center gap-2.5 font-normal shrink-0"
             >
               <ClipboardType size="15" className="shrink-0" />
               <span>Copiar Markdown</span>

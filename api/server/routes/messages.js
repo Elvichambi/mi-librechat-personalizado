@@ -404,7 +404,6 @@ router.put('/:conversationId/:messageId/feedback', validateMessageReq, async (re
 router.delete('/:conversationId/:messageId', validateMessageReq, async (req, res) => {
   const { conversationId, messageId } = req.params;
 
-  // 1. Wait for any active deletion on this conversation to complete (serialization)
   while (activeDeletions.has(conversationId)) {
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
@@ -415,49 +414,42 @@ router.delete('/:conversationId/:messageId', validateMessageReq, async (req, res
     const Message = mongoose.models.Message;
     const Convo = mongoose.models.Conversation;
 
-    console.log('Object.keys(mongoose.models):', Object.keys(mongoose.models));
-    logger.info(`[messages.js DELETE] Object.keys(mongoose.models): ${JSON.stringify(Object.keys(mongoose.models))}`);
-
-    // 2. Find the message to delete before deleting it, to retrieve parentMessageId and _id
     const messageToDelete = await Message.findOne({ messageId, conversationId, user: req.user.id });
-    
+
     if (messageToDelete) {
       const parentId = messageToDelete.parentMessageId;
-      logger.info(`[messages.js DELETE] Found message to delete: ${messageId}, parentMessageId: ${parentId}`);
 
-      // 3. Perform the deletion using the native db.deleteMessages function (this triggers pre('deleteMany') hook for MeiliSearch)
+      // 1. Borrar el mensaje
       const deleteResult = await db.deleteMessages({ messageId, conversationId, user: req.user.id });
-      console.log('deleteResult:', deleteResult);
-      logger.info(`[messages.js DELETE] deleteResult: ${JSON.stringify(deleteResult)}`);
 
-      // 4. Only if the deletion succeeded (deletedCount > 0), perform re-linking and pulling
       if (deleteResult && deleteResult.deletedCount > 0) {
-        // Re-link direct children to the grandparent parentMessageId (surgical deletion)
-        const updateChildrenResult = await Message.updateMany(
+        // 2. Re-enlazar hijos al abuelo (mantiene el árbol intacto)
+        await Message.updateMany(
           { parentMessageId: messageId, conversationId, user: req.user.id },
           { $set: { parentMessageId: parentId } }
         );
-        logger.info(`[messages.js DELETE] Re-linked children to parentId ${parentId}. Update result: ${JSON.stringify(updateChildrenResult)}`);
 
-        // Pull the deleted message Object ID from the Conversation messages list
+        // 3. RESPONDER YA, antes del paso que se cuelga (con cuerpo, para cerrar la conexión)
+        res.status(200).json({ success: true });
+
+        // 4. Limpieza en segundo plano (NO bloquea la respuesta; si se cuelga aquí, ya no importa)
         if (Convo && messageToDelete._id) {
-          const pullResult = await Convo.updateOne(
+          Convo.updateOne(
             { conversationId, user: req.user.id },
             { $pull: { messages: messageToDelete._id } }
-          );
-          logger.info(`[messages.js DELETE] Pulled message ID from Conversation messages array. Pull result: ${JSON.stringify(pullResult)}`);
+          ).catch((e) => logger.warn('[messages.js DELETE] convo pull failed:', e));
         }
-      } else {
-        logger.warn(`[messages.js DELETE] deleteResult indicated no message was deleted: ${JSON.stringify(deleteResult)}. Skipping child re-linking and conversation pulling.`);
+        return;
       }
-    } else {
-      logger.warn(`[messages.js DELETE] Message to delete not found: messageId: ${messageId}, conversationId: ${conversationId}`);
     }
 
-    res.status(204).send();
+    // Nada que borrar / ya estaba borrado -> responder igual (idempotente)
+    res.status(200).json({ success: true });
   } catch (error) {
     logger.error('Error deleting message:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Internal server error' });
+    }
   } finally {
     activeDeletions.delete(conversationId);
   }

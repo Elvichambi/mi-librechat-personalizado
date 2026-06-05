@@ -1,0 +1,19 @@
+version: 1.1.5
+
+cache: true
+
+endpoints:
+  custom:
+    - name: "DeepSeek"
+      apiKey: "${DEEPSEEK_API_KEY}"
+      baseURL: "https://api.deepseek.com/v1"
+      models:
+        default: [
+          "deepseek-reasoner", 
+          "deepseek-chat"
+        ]
+        fetch: false
+      titleConvo: true
+      titleModel: "deepseek-chat"
+      modelDisplayLabel: "DeepSeek"
+      iconURL: "https://chat.deepseek.com/favicon.svg"

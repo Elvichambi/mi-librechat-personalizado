@@ -10,7 +10,7 @@ import ContentParts from './Content/ContentParts';
 import { fontSizeAtom } from '~/store/fontSize';
 import SiblingSwitch from './SiblingSwitch';
 import MultiMessage from './MultiMessage';
-import HoverButtons from './HoverButtons';
+import HoverButtons, { MessageActionsDropdown } from './HoverButtons';
 import SubRow from './SubRow';
 import store from '~/store';
 
@@ -107,7 +107,11 @@ export default function Message(props: TMessageProps) {
           <div
             id={messageId ?? ''}
             aria-label={getMessageAriaLabel(message, localize)}
-            className={cn(baseClasses.common, baseClasses.chat, 'message-render')}
+            className={cn(
+              baseClasses.common,
+              baseClasses.chat,
+              'message-render relative rounded-2xl p-3.5 transition-all duration-300 hover:bg-black/[0.04] dark:hover:bg-white/[0.06] hover:ring-1 hover:ring-black/[0.08] dark:hover:ring-white/[0.08]',
+            )}
           >
             {!hasParallelContent && (
               <div className="relative flex flex-shrink-0 flex-col items-center">
@@ -175,6 +179,12 @@ export default function Message(props: TMessageProps) {
                 )}
               </div>
             </div>
+            <MessageActionsDropdown
+              message={message}
+              conversation={conversation ?? null}
+              latestMessageId={latestMessageId}
+              copyToClipboard={copyToClipboard}
+            />
           </div>
         </div>
       </div>
