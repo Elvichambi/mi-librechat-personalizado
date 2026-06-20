@@ -5,7 +5,6 @@ import { CSSTransition } from 'react-transition-group';
 import type { TMessage } from 'librechat-data-provider';
 import { useScreenshot, useMessageScrolling, useLocalize } from '~/hooks';
 import ScrollToBottom from '~/components/Messages/ScrollToBottom';
-import ScrollToTop from '~/components/Messages/ScrollToTop';
 import { MessagesViewProvider } from '~/Providers';
 import { fontSizeAtom } from '~/store/fontSize';
 import MultiMessage from './MultiMessage';
@@ -24,17 +23,13 @@ function MessagesViewContent({
   const scrollButtonPreference = useRecoilValue(store.showScrollButton);
   const [currentEditId, setCurrentEditId] = useState<number | string | null>(-1);
   const scrollToBottomRef = useRef<HTMLButtonElement>(null);
-  const scrollToTopRef = useRef<HTMLButtonElement>(null);
 
   const {
     conversation,
     scrollableRef,
     messagesEndRef,
-    messagesStartRef,
     showScrollButton,
-    showScrollTopButton,
     handleSmoothToRef,
-    handleSmoothToTop,
     debouncedHandleScroll,
   } = useMessageScrolling(_messagesTree);
 
@@ -55,11 +50,6 @@ function MessagesViewContent({
             }}
           >
             <div className="flex flex-col pb-9 pt-14 dark:bg-transparent">
-              <div
-                id="messages-start"
-                className="group h-0 w-full flex-shrink-0"
-                ref={messagesStartRef}
-              />
               {(_messagesTree && _messagesTree.length == 0) || _messagesTree === null ? (
                 <div
                   className={cn(
@@ -90,18 +80,11 @@ function MessagesViewContent({
           </div>
 
           <CSSTransition
-            in={showScrollTopButton && scrollButtonPreference}
-            timeout={{ enter: 550, exit: 700 }}
-            classNames="scroll-animation"
-            unmountOnExit={true}
-            appear={true}
-            nodeRef={scrollToTopRef}
-          >
-            <ScrollToTop ref={scrollToTopRef} scrollHandler={handleSmoothToTop} />
-          </CSSTransition>
-          <CSSTransition
             in={showScrollButton && scrollButtonPreference}
-            timeout={{ enter: 550, exit: 700 }}
+            timeout={{
+              enter: 550,
+              exit: 700,
+            }}
             classNames="scroll-animation"
             unmountOnExit={true}
             appear={true}

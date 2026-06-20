@@ -14,26 +14,16 @@ export default function useMessageScrolling(messagesTree?: TMessage[] | null) {
 
   const scrollableRef = useRef<HTMLDivElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
-  const messagesStartRef = useRef<HTMLDivElement | null>(null);
   const [showScrollButton, setShowScrollButton] = useState(false);
-  const [showScrollTopButton, setShowScrollTopButton] = useState(false);
   const { conversation, conversationId } = useMessagesConversation();
   const { setAbortScroll, isSubmitting, abortScroll } = useMessagesSubmission();
 
   const timeoutIdRef = useRef<NodeJS.Timeout>();
-  const topTimeoutIdRef = useRef<NodeJS.Timeout>();
 
   const debouncedSetShowScrollButton = useCallback((value: boolean) => {
     clearTimeout(timeoutIdRef.current);
     timeoutIdRef.current = setTimeout(() => {
       setShowScrollButton(value);
-    }, debounceRate);
-  }, []);
-
-  const debouncedSetShowScrollTopButton = useCallback((value: boolean) => {
-    clearTimeout(topTimeoutIdRef.current);
-    topTimeoutIdRef.current = setTimeout(() => {
-      setShowScrollTopButton(value);
     }, debounceRate);
   }, []);
 
@@ -57,26 +47,6 @@ export default function useMessageScrolling(messagesTree?: TMessage[] | null) {
     };
   }, [messagesEndRef, scrollableRef, debouncedSetShowScrollButton]);
 
-  useEffect(() => {
-    if (!messagesStartRef.current || !scrollableRef.current) {
-      return;
-    }
-
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        debouncedSetShowScrollTopButton(!entry.isIntersecting);
-      },
-      { root: scrollableRef.current, threshold: 0.1 },
-    );
-
-    observer.observe(messagesStartRef.current);
-
-    return () => {
-      observer.disconnect();
-      clearTimeout(topTimeoutIdRef.current);
-    };
-  }, [messagesStartRef, scrollableRef, debouncedSetShowScrollTopButton]);
-
   const debouncedHandleScroll = useCallback(() => {
     if (messagesEndRef.current && scrollableRef.current) {
       const observer = new IntersectionObserver(
@@ -91,13 +61,6 @@ export default function useMessageScrolling(messagesTree?: TMessage[] | null) {
   }, [debouncedSetShowScrollButton]);
 
   const scrollCallback = () => debouncedSetShowScrollButton(false);
-  const scrollTopCallback = () => debouncedSetShowScrollTopButton(false);
-
-  const { handleSmoothToRef: handleSmoothToTop } = useScrollToRef({
-    targetRef: messagesStartRef,
-    callback: scrollTopCallback,
-    smoothCallback: scrollTopCallback,
-  });
 
   const { scrollToRef: scrollToBottom, handleSmoothToRef } = useScrollToRef({
     targetRef: messagesEndRef,
@@ -142,12 +105,9 @@ export default function useMessageScrolling(messagesTree?: TMessage[] | null) {
     conversation,
     scrollableRef,
     messagesEndRef,
-    messagesStartRef,
     scrollToBottom,
     showScrollButton,
-    showScrollTopButton,
     handleSmoothToRef,
-    handleSmoothToTop,
     debouncedHandleScroll,
   };
 }

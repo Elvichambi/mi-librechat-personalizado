@@ -48,7 +48,6 @@ export const PromptGroupsProvider = ({ children }: { children: ReactNode }) => {
             : (group.productionPrompt?.prompt ?? '')
         }`,
         icon: <CategoryIcon category={group.category ?? ''} className="h-5 w-5" />,
-        category: group.category ?? '',
       }));
 
       const promptsMap = mapPromptGroups(data);

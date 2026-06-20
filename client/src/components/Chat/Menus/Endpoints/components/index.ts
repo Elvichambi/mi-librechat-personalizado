@@ -3,4 +3,3 @@ export * from './EndpointModelItem';
 export * from './EndpointItem';
 export * from './SearchResults';
 export * from './CustomGroup';
-export * from './FavoritesGroup';

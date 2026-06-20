@@ -11,8 +11,6 @@ export interface MentionItemProps {
   isActive?: boolean;
   description?: string;
   style?: React.CSSProperties;
-  draggable?: boolean;
-  onDragStart?: (e: React.DragEvent<HTMLButtonElement>) => void;
 }
 
 export default function MentionItem({
@@ -24,8 +22,6 @@ export default function MentionItem({
   description,
   style,
   type = 'mention',
-  draggable,
-  onDragStart,
 }: MentionItemProps) {
   return (
     <button
@@ -35,8 +31,6 @@ export default function MentionItem({
       onClick={onClick}
       id={`${type}-item-${index}`}
       className="w-full touch-manipulation"
-      draggable={draggable}
-      onDragStart={onDragStart}
     >
       <div
         className={cn(

@@ -540,7 +540,6 @@ export type MentionOption = OptionWithIcon & {
 };
 export type PromptOption = MentionOption & {
   id: string;
-  category?: string;
 };
 
 export type TOptionSettings = {

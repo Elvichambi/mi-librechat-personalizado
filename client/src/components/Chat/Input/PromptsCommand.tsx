@@ -5,12 +5,10 @@ import { useSetRecoilState, useRecoilValue } from 'recoil';
 import type { TPromptGroup } from 'librechat-data-provider';
 import type { PromptOption } from '~/common';
 import useInitPopoverInput from '~/hooks/Input/useInitPopoverInput';
-import useGroupedPrompts from '~/hooks/Prompts/useGroupedPrompts';
 import { removeCharIfLast, detectVariables } from '~/utils';
-import { useUpdatePromptGroup, useRecordPromptUsage } from '~/data-provider';
+import { useRecordPromptUsage } from '~/data-provider';
 import { VariableDialog } from '~/components/Prompts';
 import { usePromptGroupsContext } from '~/Providers';
-import PromptFolder from './PromptFolder';
 import MentionItem from './MentionItem';
 import { useLocalize } from '~/hooks';
 import store from '~/store';
@@ -78,7 +76,6 @@ function PromptsCommand({
 
   const prompts = useMemo(() => data?.promptGroups, [data]);
   const promptsMap = useMemo(() => data?.promptsMap, [data]);
-  const updateGroupMutation = useUpdatePromptGroup();
 
   const { open, setOpen, searchValue, setSearchValue, matches } = useCombobox({
     value: '',
@@ -159,35 +156,12 @@ function PromptsCommand({
     currentActiveItem?.scrollIntoView({ behavior: 'instant', block: 'nearest' });
   }, [activeIndex]);
 
-  const { items: groupedItems, toggleFolder } = useGroupedPrompts(
-    matches as PromptOption[],
-    searchValue,
-  );
-
-  const handleDropToFolder = useCallback(
-    (folderName: string, promptId: string) => {
-      const category = folderName === 'Recientes' ? '' : folderName;
-      updateGroupMutation.mutate({ id: promptId, payload: { category } });
-    },
-    [updateGroupMutation],
-  );
-
-  const promptIndices = useMemo(() => {
-    const indices: number[] = [];
-    for (let i = 0; i < groupedItems.length; i++) {
-      if (groupedItems[i].type === 'prompt') {
-        indices.push(i);
-      }
-    }
-    return indices;
-  }, [groupedItems]);
-
   if (!hasAccess) {
     return null;
   }
 
   const rowRenderer = ({
-    index: rowIndex,
+    index,
     key,
     style,
   }: {
@@ -195,25 +169,10 @@ function PromptsCommand({
     key: string;
     style: React.CSSProperties;
   }) => {
-    const item = groupedItems[rowIndex];
-    if (item.type === 'folder') {
-      return (
-        <PromptFolder
-          key={key}
-          style={style}
-          name={item.name}
-          count={item.count}
-          expanded={item.expanded}
-          onToggle={() => toggleFolder(item.name === 'Recientes' ? '' : item.name)}
-          onDrop={(promptId) => handleDropToFolder(item.name, promptId)}
-        />
-      );
-    }
-    const mention = item.option;
-    const promptIdx = promptIndices.indexOf(rowIndex);
+    const mention = matches[index] as PromptOption;
     return (
       <MentionItem
-        index={rowIndex}
+        index={index}
         type="prompt"
         key={key}
         style={style}
@@ -227,12 +186,7 @@ function PromptsCommand({
         name={mention.label ?? ''}
         icon={mention.icon}
         description={mention.description}
-        isActive={promptIdx === activeIndex}
-        draggable={true}
-        onDragStart={(e) => {
-          e.dataTransfer.setData('promptGroupId', mention.id);
-          e.dataTransfer.effectAllowed = 'move';
-        }}
+        isActive={index === activeIndex}
       />
     );
   };
@@ -260,20 +214,14 @@ function PromptsCommand({
                 textAreaRef.current?.focus();
               }
               if (e.key === 'ArrowDown') {
-                setActiveIndex((prevIndex) => (prevIndex + 1) % promptIndices.length);
+                setActiveIndex((prevIndex) => (prevIndex + 1) % matches.length);
               } else if (e.key === 'ArrowUp') {
-                setActiveIndex(
-                  (prevIndex) => (prevIndex - 1 + promptIndices.length) % promptIndices.length,
-                );
+                setActiveIndex((prevIndex) => (prevIndex - 1 + matches.length) % matches.length);
               } else if (e.key === 'Enter' || e.key === 'Tab') {
                 if (e.key === 'Enter') {
                   e.preventDefault();
                 }
-                const flatIdx = promptIndices[activeIndex];
-                const item = flatIdx != null ? groupedItems[flatIdx] : undefined;
-                const mention =
-                  item && item.type === 'prompt' ? (item.option as PromptOption) : undefined;
-                handleSelect(mention, e);
+                handleSelect(matches[activeIndex] as PromptOption | undefined, e);
               } else if (e.key === 'Backspace' && searchValue === '') {
                 setOpen(false);
                 setShowPromptsPopover(false);
@@ -289,25 +237,23 @@ function PromptsCommand({
               }, 150);
             }}
           />
-          {open && isLoading && groupedItems.length === 0 && (
+          {open && isLoading && matches.length === 0 && (
             <div className="flex h-32 items-center justify-center text-text-primary">
               <Spinner />
             </div>
           )}
-          {open && groupedItems.length > 0 && (
-            <div className="max-h-60">
+          {open && matches.length > 0 && (
+            <div className="max-h-40">
               <AutoSizer disableHeight>
                 {({ width }) => (
                   <List
                     width={width}
                     overscanRowCount={5}
                     rowHeight={ROW_HEIGHT}
-                    rowCount={groupedItems.length}
+                    rowCount={matches.length}
                     rowRenderer={rowRenderer}
-                    scrollToIndex={
-                      promptIndices[activeIndex] != null ? promptIndices[activeIndex] : 0
-                    }
-                    height={Math.min(groupedItems.length * ROW_HEIGHT, 260)}
+                    scrollToIndex={activeIndex}
+                    height={Math.min(matches.length * ROW_HEIGHT, 160)}
                   />
                 )}
               </AutoSizer>
