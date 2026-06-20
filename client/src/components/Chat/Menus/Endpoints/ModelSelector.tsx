@@ -7,6 +7,7 @@ import {
   renderEndpoints,
   renderSearchResults,
   renderCustomGroups,
+  FavoritesGroup,
 } from './components';
 import { ModelSelectorProvider, useModelSelectorContext } from './ModelSelectorContext';
 import { ModelSelectorChatProvider } from './ModelSelectorChatContext';
@@ -101,6 +102,7 @@ function ModelSelectorContent() {
           renderSearchResults(searchResults, localize, searchValue)
         ) : (
           <>
+            <FavoritesGroup />
             {/* Render ungrouped modelSpecs (no group field) */}
             {renderModelSpecs(
               modelSpecs?.filter((spec) => !spec.group) || [],

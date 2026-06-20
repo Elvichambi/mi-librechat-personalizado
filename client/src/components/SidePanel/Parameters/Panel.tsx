@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect, useCallback } from 'react';
+import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react';
 import { useRecoilValue } from 'recoil';
 import keyBy from 'lodash/keyBy';
 import { RotateCcw } from 'lucide-react';
@@ -11,11 +11,13 @@ import {
   tConvoUpdateSchema,
 } from 'librechat-data-provider';
 import type { TPreset } from 'librechat-data-provider';
+import useModelPresets, { extractParamValues } from '~/hooks/Conversations/useModelPresets';
 import { SaveAsPresetDialog } from '~/components/Endpoints';
 import { useSetIndexOptions, useLocalize } from '~/hooks';
 import { useGetEndpointsQuery } from '~/data-provider';
 import { componentMapping } from './components';
 import { useChatContext } from '~/Providers';
+import PresetSlots from './PresetSlots';
 import { logger } from '~/utils';
 import store from '~/store';
 
@@ -31,6 +33,18 @@ export default function Parameters() {
   const { data: endpointsConfig = {} } = useGetEndpointsQuery();
   const provider = conversation?.endpoint ?? '';
   const model = conversation?.model ?? '';
+
+  const {
+    activeSlot,
+    hasCustomA,
+    hasCustomB,
+    switchSlot,
+    saveToSlot,
+    resetSlot,
+    getSlotParams,
+  } = useModelPresets(provider, model);
+  const autoSaveTimerRef = useRef<NodeJS.Timeout>();
+  const suppressAutoSaveRef = useRef(false);
 
   const bedrockRegions = useMemo(() => {
     return endpointsConfig?.[conversation?.endpoint ?? '']?.availableRegions ?? [];
@@ -52,6 +66,26 @@ export default function Parameters() {
       .filter((param) => param != null)
       .map((param) => (overriddenParamsMap[param.key] as SettingDefinition) ?? param);
   }, [endpointType, endpointsConfig, model, provider]);
+
+  useEffect(() => {
+    if (!parameters.length || activeSlot === 'default') {
+      return;
+    }
+    const saved = getSlotParams(activeSlot);
+    if (saved) {
+      suppressAutoSaveRef.current = true;
+      setConversation((prev) => {
+        if (!prev) {
+          return prev;
+        }
+        return { ...prev, ...saved };
+      });
+      setTimeout(() => {
+        suppressAutoSaveRef.current = false;
+      }, 600);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [provider, model]);
 
   useEffect(() => {
     if (!parameters) {
@@ -132,6 +166,57 @@ export default function Parameters() {
     });
   }, [setConversation]);
 
+  useEffect(() => {
+    if (!conversation || !parameters.length || activeSlot === 'default') {
+      return;
+    }
+    if (suppressAutoSaveRef.current) {
+      return;
+    }
+    clearTimeout(autoSaveTimerRef.current);
+    autoSaveTimerRef.current = setTimeout(() => {
+      const current = extractParamValues(conversation, parameters);
+      if (Object.keys(current).length > 0) {
+        saveToSlot(activeSlot, current);
+      }
+    }, 500);
+    return () => clearTimeout(autoSaveTimerRef.current);
+  }, [conversation, parameters, activeSlot, saveToSlot]);
+
+  const handleSwitchSlot = useCallback(
+    (slot: 'default' | 'customA' | 'customB') => {
+      switchSlot(slot);
+      if (slot === 'default') {
+        resetParameters();
+        return;
+      }
+      const saved = getSlotParams(slot);
+      if (saved) {
+        suppressAutoSaveRef.current = true;
+        setConversation((prev) => {
+          if (!prev) {
+            return prev;
+          }
+          return { ...prev, ...saved };
+        });
+        setTimeout(() => {
+          suppressAutoSaveRef.current = false;
+        }, 600);
+      }
+    },
+    [switchSlot, resetParameters, getSlotParams, setConversation],
+  );
+
+  const handleResetSlot = useCallback(
+    (slot: 'default' | 'customA' | 'customB') => {
+      resetSlot(slot);
+      if (activeSlot === slot) {
+        resetParameters();
+      }
+    },
+    [resetSlot, activeSlot, resetParameters],
+  );
+
   const openDialog = useCallback(() => {
     const newPreset = tConvoUpdateSchema.parse({
       ...conversation,
@@ -146,10 +231,19 @@ export default function Parameters() {
 
   return (
     <div className="h-auto max-w-full px-3.5 pb-4 pt-2">
+      {storyLabUI && (
+        <div className="mb-3 flex items-center justify-between">
+          <span className="text-xs font-medium text-text-secondary">Preset</span>
+          <PresetSlots
+            activeSlot={activeSlot}
+            hasCustomA={hasCustomA}
+            hasCustomB={hasCustomB}
+            onSwitch={handleSwitchSlot}
+            onReset={handleResetSlot}
+          />
+        </div>
+      )}
       <div className={storyLabUI ? "flex flex-col gap-5.5" : "grid grid-cols-2 gap-4"}>
-        {' '}
-        {/* This is the parent element containing all settings */}
-        {/* Below is an example of an applied dynamic setting, each be contained by a div with the column span specified */}
         {parameters
           .filter((setting) => {
             if (!storyLabUI) {
