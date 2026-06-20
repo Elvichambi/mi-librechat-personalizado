@@ -108,7 +108,25 @@ function ConvoOptions({
     },
   });
 
+  const duplicateAndFreeze = useDuplicateConversationMutation({
+    onSuccess: (data) => {
+      updateFrozenMutation.mutate({
+        conversationId: data.conversation.conversationId ?? '',
+        isFrozen: true,
+      });
+      showToast({
+        message: 'Copia congelada guardada en Congelados ❄️',
+        status: 'success',
+      });
+      setIsPopoverActive(false);
+    },
+    onError: () => {
+      showToast({ message: 'No se pudo congelar la copia', status: 'error' });
+    },
+  });
+
   const isDuplicateLoading = duplicateConversation.isLoading;
+  const isFreezeLoading = duplicateAndFreeze.isLoading || updateFrozenMutation.isLoading;
   const isArchiveLoading = archiveConvoMutation.isLoading;
   const isDeleteLoading = deleteMutation.isLoading;
 
@@ -187,38 +205,32 @@ function ConvoOptions({
     });
   }, [conversationId, duplicateConversation]);
 
-  const duplicateAndFreeze = useDuplicateConversationMutation({
-    onSuccess: (data) => {
-      // Congelamos la copia
-      updateFrozenMutation.mutate({
-        conversationId: data.conversation.conversationId,
-        isFrozen: true,
-      });
-      // Archivamos la copia para que funcione como marcador
-      archiveConvoMutation.mutate({
-        conversationId: data.conversation.conversationId,
-        isArchived: true,
-      });
-      showToast({ message: 'Snapshot congelado guardado en Archivados', status: 'success' });
-      setIsPopoverActive(false);
-    },
-  });
-
-  const handleFreezeClick = useCallback(() => {
-    if (isFrozen) {
-      // Si ya está congelado, simplemente lo descongela
-      updateFrozenMutation.mutate({
-        conversationId: conversationId ?? '',
-        isFrozen: false,
-      });
+  const handleFreezeCopy = useCallback(() => {
+    const convoId = conversationId ?? '';
+    if (!convoId) {
       return;
     }
+    duplicateAndFreeze.mutate({ conversationId: convoId });
+  }, [conversationId, duplicateAndFreeze]);
 
-    // Si NO está congelado, creamos una copia (snapshot) y la congelamos
-    duplicateAndFreeze.mutate({
-      conversationId: conversationId ?? '',
-    });
-  }, [conversationId, isFrozen, duplicateAndFreeze, updateFrozenMutation]);
+  const handleUnfreeze = useCallback(() => {
+    const convoId = conversationId ?? '';
+    if (!convoId) {
+      return;
+    }
+    updateFrozenMutation.mutate(
+      { conversationId: convoId, isFrozen: false },
+      {
+        onSuccess: () => {
+          showToast({
+            message: 'Plantilla descongelada — ya puedes editarla',
+            status: 'success',
+          });
+          setIsPopoverActive(false);
+        },
+      },
+    );
+  }, [conversationId, updateFrozenMutation, showToast, setIsPopoverActive]);
 
   const dropdownItems = useMemo(
     () => [
@@ -240,17 +252,41 @@ function ConvoOptions({
         icon: <Pen className="icon-sm mr-2 text-text-primary" aria-hidden="true" />,
       },
       {
-        label: isFrozen ? 'Descongelar' : 'Congelar (Guardar Snapshot)',
-        onClick: handleFreezeClick,
+        label: 'Congelar (guardar copia)',
+        show: !isFrozen,
+        onClick: handleFreezeCopy,
         hideOnClick: false,
-        icon: (updateFrozenMutation.isLoading || duplicateAndFreeze.isLoading) ? (
+        icon: isFreezeLoading ? (
           <Spinner className="size-4" />
         ) : (
           <Snowflake className="icon-sm mr-2 text-text-primary" aria-hidden="true" />
         ),
       },
       {
+        label: 'Clonar para continuar',
+        show: isFrozen,
+        onClick: handleDuplicateClick,
+        hideOnClick: false,
+        icon: isDuplicateLoading ? (
+          <Spinner className="size-4" />
+        ) : (
+          <CopyPlus className="icon-sm mr-2 text-text-primary" aria-hidden="true" />
+        ),
+      },
+      {
+        label: 'Editar (descongelar)',
+        show: isFrozen,
+        onClick: handleUnfreeze,
+        hideOnClick: false,
+        icon: updateFrozenMutation.isLoading ? (
+          <Spinner className="size-4" />
+        ) : (
+          <Pen className="icon-sm mr-2 text-text-primary" aria-hidden="true" />
+        ),
+      },
+      {
         label: localize('com_ui_duplicate'),
+        show: !isFrozen,
         onClick: handleDuplicateClick,
         hideOnClick: false,
         icon: isDuplicateLoading ? (
@@ -289,12 +325,13 @@ function ConvoOptions({
       deleteHandler,
       isArchiveLoading,
       isDuplicateLoading,
+      isFreezeLoading,
       handleArchiveClick,
       handleDuplicateClick,
-      handleFreezeClick,
+      handleFreezeCopy,
+      handleUnfreeze,
       isFrozen,
       updateFrozenMutation.isLoading,
-      duplicateAndFreeze.isLoading,
     ],
   );
 

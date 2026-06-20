@@ -32,6 +32,8 @@ interface ConversationsProps {
   isSearchLoading: boolean;
   isChatsExpanded: boolean;
   setIsChatsExpanded: (expanded: boolean) => void;
+  showFavorites?: boolean;
+  showChatsHeader?: boolean;
 }
 
 interface MeasuredRowProps {
@@ -102,7 +104,7 @@ const DateLabel: FC<{ groupName: string; isFirst?: boolean }> = memo(({ groupNam
       aria-label={localize('com_a11y_chats_date_section', {
         date: localize(groupName as TranslationKeys) || groupName,
       })}
-      className={cn('pl-1 pt-1 text-text-secondary', isFirst === true ? 'mt-0' : 'mt-2')}
+      className={cn('pl-1 pt-0.5 text-text-secondary', isFirst === true ? 'mt-0' : 'mt-1')}
       style={{ fontSize: '0.7rem' }}
     >
       {localize(groupName as TranslationKeys) || groupName}
@@ -160,12 +162,15 @@ const Conversations: FC<ConversationsProps> = ({
   isSearchLoading,
   isChatsExpanded,
   setIsChatsExpanded,
+  showFavorites = true,
+  showChatsHeader = true,
 }) => {
   const localize = useLocalize();
+  const chatsExpanded = showChatsHeader ? isChatsExpanded : true;
   const search = useRecoilValue(store.search);
   const { favorites, isLoading: isFavoritesLoading } = useFavorites();
   const isSmallScreen = useMediaQuery('(max-width: 768px)');
-  const convoHeight = isSmallScreen ? 44 : 34;
+  const convoHeight = isSmallScreen ? 44 : 32;
   const showAgentMarketplace = useShowMarketplace();
 
   const favoritesContentKeyRef = useRef('');
@@ -179,7 +184,9 @@ const Conversations: FC<ConversationsProps> = ({
 
   // Determine if FavoritesList will render content
   const shouldShowFavorites =
-    !search.query && (isFavoritesLoading || favorites.length > 0 || showAgentMarketplace);
+    showFavorites &&
+    !search.query &&
+    (isFavoritesLoading || favorites.length > 0 || showAgentMarketplace);
 
   favoritesContentKeyRef.current = `${favorites.length}-${showAgentMarketplace ? 1 : 0}-${isFavoritesLoading ? 1 : 0}`;
 
@@ -199,9 +206,11 @@ const Conversations: FC<ConversationsProps> = ({
     if (shouldShowFavorites) {
       items.push({ type: 'favorites' });
     }
-    items.push({ type: 'chats-header' });
+    if (showChatsHeader) {
+      items.push({ type: 'chats-header' });
+    }
 
-    if (isChatsExpanded) {
+    if (chatsExpanded) {
       groupedConversations.forEach(([groupName, convos]) => {
         items.push({ type: 'header', groupName });
         items.push(...convos.map((convo) => ({ type: 'convo' as const, convo })));
@@ -212,7 +221,7 @@ const Conversations: FC<ConversationsProps> = ({
       }
     }
     return items;
-  }, [groupedConversations, isLoading, isChatsExpanded, shouldShowFavorites]);
+  }, [groupedConversations, isLoading, chatsExpanded, shouldShowFavorites, showChatsHeader]);
 
   // Store flattenedItems in a ref for keyMapper to access without recreating cache
   const flattenedItemsRef = useRef(flattenedItems);
@@ -309,10 +318,8 @@ const Conversations: FC<ConversationsProps> = ({
       }
 
       if (item.type === 'header') {
-        // First date header index depends on whether favorites row is included
-        // With favorites: [favorites, chats-header, first-header] → index 2
-        // Without favorites: [chats-header, first-header] → index 1
-        const firstHeaderIndex = shouldShowFavorites ? 2 : 1;
+        // First date header index depends on whether the favorites / chats-header rows are included
+        const firstHeaderIndex = (shouldShowFavorites ? 1 : 0) + (showChatsHeader ? 1 : 0);
         return (
           <MeasuredRow key={key} {...rowProps}>
             <DateLabel groupName={item.groupName} isFirst={index === firstHeaderIndex} />
@@ -345,6 +352,7 @@ const Conversations: FC<ConversationsProps> = ({
       isChatsExpanded,
       setIsChatsExpanded,
       shouldShowFavorites,
+      showChatsHeader,
       activeJobIds,
     ],
   );
@@ -353,6 +361,13 @@ const Conversations: FC<ConversationsProps> = ({
     ({ index }: { index: number }) => cache.getHeight(index, 0),
     [cache],
   );
+
+  const handleResize = useCallback(() => {
+    cache.clearAll();
+    if (containerRef.current && 'recomputeRowHeights' in containerRef.current) {
+      containerRef.current.recomputeRowHeights(0);
+    }
+  }, [cache, containerRef]);
 
   const throttledLoadMore = useMemo(
     () => throttle(loadMoreConversations, 300),
@@ -377,7 +392,7 @@ const Conversations: FC<ConversationsProps> = ({
         </div>
       ) : (
         <div className="flex-1">
-          <AutoSizer>
+          <AutoSizer onResize={handleResize}>
             {({ width, height }) => (
               <List
                 ref={containerRef}

@@ -24,7 +24,7 @@ function AccountSettings({ collapsed = false }: { collapsed?: boolean }) {
   const [storyLabUI, setStoryLabUI] = useRecoilState(store.storyLabUI);
 
   return (
-    <Menu.MenuProvider>
+    <Menu.MenuProvider placement={collapsed ? 'right-end' : 'bottom'}>
       <Menu.MenuButton
         ref={accountSettingsButtonRef}
         aria-label={localize('com_nav_account_settings')}
@@ -32,14 +32,12 @@ function AccountSettings({ collapsed = false }: { collapsed?: boolean }) {
         className={
           collapsed
             ? 'flex h-9 w-9 items-center justify-center rounded-lg transition-colors hover:bg-surface-active-alt aria-[expanded=true]:bg-surface-active-alt'
-            : 'mt-text-sm flex h-auto w-full items-center gap-2 rounded-xl p-2 text-sm transition-all duration-200 ease-in-out hover:bg-surface-active-alt aria-[expanded=true]:bg-surface-active-alt'
+            : 'flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition-colors hover:bg-surface-active-alt aria-[expanded=true]:bg-surface-active-alt'
         }
       >
-        <div
-          className={collapsed ? 'size-7 flex-shrink-0' : '-ml-0.9 -mt-0.8 h-8 w-8 flex-shrink-0'}
-        >
+        <div className={collapsed ? 'size-7 flex-shrink-0' : 'h-7 w-7 flex-shrink-0'}>
           <div className="relative flex">
-            <Avatar user={user} size={collapsed ? 28 : 32} />
+            <Avatar user={user} size={28} />
           </div>
         </div>
         {!collapsed && (
@@ -54,7 +52,6 @@ function AccountSettings({ collapsed = false }: { collapsed?: boolean }) {
       <Menu.Menu
         portal
         className="account-settings-popover popover-ui z-[125] w-[305px] rounded-lg md:w-[244px]"
-        placement={collapsed ? 'right-end' : undefined}
         style={{
           transformOrigin: collapsed ? 'left bottom' : 'bottom',
           translate: collapsed ? '4px 0' : '0 -4px',

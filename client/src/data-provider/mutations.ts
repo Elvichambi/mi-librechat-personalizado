@@ -55,6 +55,7 @@ export const useUpdateFrozenMutation = (
         const targetId = payload.conversationId || id;
         queryClient.setQueryData([QueryKeys.conversation, targetId], updatedConvo);
         updateConvoInAllQueries(queryClient, targetId, () => updatedConvo);
+        queryClient.invalidateQueries([QueryKeys.allConversations]);
       },
     },
   );

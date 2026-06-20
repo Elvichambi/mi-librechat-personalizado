@@ -25,6 +25,7 @@ export interface ConversationMethods {
       cursor?: string | null;
       limit?: number;
       isArchived?: boolean;
+      isFrozen?: boolean;
       tags?: string[];
       search?: string;
       sortBy?: string;
@@ -249,6 +250,7 @@ export function createConversationMethods(
       cursor,
       limit = 25,
       isArchived = false,
+      isFrozen,
       tags,
       search,
       sortBy = 'updatedAt',
@@ -257,6 +259,7 @@ export function createConversationMethods(
       cursor?: string | null;
       limit?: number;
       isArchived?: boolean;
+      isFrozen?: boolean;
       tags?: string[];
       search?: string;
       sortBy?: string;
@@ -271,6 +274,16 @@ export function createConversationMethods(
       filters.push({
         $or: [{ isArchived: false }, { isArchived: { $exists: false } }],
       } as FilterQuery<IConversation>);
+    }
+
+    if (typeof isFrozen === 'boolean') {
+      if (isFrozen) {
+        filters.push({ isFrozen: true } as FilterQuery<IConversation>);
+      } else {
+        filters.push({
+          $or: [{ isFrozen: false }, { isFrozen: { $exists: false } }],
+        } as FilterQuery<IConversation>);
+      }
     }
 
     if (Array.isArray(tags) && tags.length > 0) {
@@ -354,7 +367,7 @@ export function createConversationMethods(
 
       const convos = await Conversation.find(query)
         .select(
-          'conversationId endpoint title createdAt updatedAt user model agent_id assistant_id spec iconURL',
+          'conversationId endpoint title createdAt updatedAt user model agent_id assistant_id spec iconURL isFrozen',
         )
         .sort(sortObj)
         .limit(limit + 1)

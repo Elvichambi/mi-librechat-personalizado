@@ -24,6 +24,7 @@ import {
 import { mainTextareaId } from '~/common';
 import AttachFileChat from './Files/AttachFileChat';
 import FileFormChat from './Files/FileFormChat';
+import FrozenBanner from './FrozenBanner';
 import { cn, removeFocusRings } from '~/utils';
 import TextareaHeader from './TextareaHeader';
 import PromptsCommand from './PromptsCommand';
@@ -110,7 +111,7 @@ const ChatForm = memo(function ChatForm({
         !assistantMap?.[endpoint ?? '']?.[conversation?.assistant_id ?? '']),
     [conversation?.assistant_id, endpoint, assistantMap],
   );
-  const isFrozen = useMemo(() => (conversation as any)?.isFrozen === true, [conversation]);
+  const isFrozen = useMemo(() => conversation?.isFrozen === true, [conversation]);
   const disableInputs = useMemo(
     () => requiresKey || invalidAssistant || isFrozen,
     [requiresKey, invalidAssistant, isFrozen],
@@ -252,7 +253,8 @@ const ChatForm = memo(function ChatForm({
               setFiles={setFiles}
               setFilesLoading={setFilesLoading}
             />
-            {endpoint && (
+            {isFrozen && <FrozenBanner conversation={conversation} index={index} />}
+            {endpoint && !isFrozen && (
               <div className={cn('flex', isRTL ? 'flex-row-reverse' : 'flex-row')}>
                 <div
                   className="relative flex-1"
@@ -389,6 +391,7 @@ function ChatFormWrapper({ index = 0 }: { index?: number }) {
       conversation?.spec,
       conversation?.useResponsesApi,
       conversation?.model,
+      conversation?.isFrozen,
       hasMessages,
     ],
   );

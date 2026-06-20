@@ -46,6 +46,26 @@ function UnifiedSidebar() {
   const [expanded, setExpanded] = useRecoilState(store.sidebarExpanded);
   const [sidebarWidth, setSidebarWidth] = useState(getInitialWidth);
   const [isResizing, setIsResizing] = useState(false);
+  const [peek, setPeek] = useState(false);
+  const peekTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handlePeekEnter = useCallback(() => {
+    if (peekTimer.current) {
+      return;
+    }
+    peekTimer.current = setTimeout(() => {
+      setPeek(true);
+      peekTimer.current = null;
+    }, 320);
+  }, []);
+
+  const handlePeekLeave = useCallback(() => {
+    if (peekTimer.current) {
+      clearTimeout(peekTimer.current);
+      peekTimer.current = null;
+    }
+    setPeek(false);
+  }, []);
   const resizeHandlers = useRef<{ move: (e: MouseEvent) => void; up: () => void } | null>(null);
   const storyLabUI = useRecoilValue(store.storyLabUI);
 
@@ -117,6 +137,9 @@ function UnifiedSidebar() {
       if (resizeHandlers.current) {
         document.removeEventListener('mousemove', resizeHandlers.current.move);
         document.removeEventListener('mouseup', resizeHandlers.current.up);
+      }
+      if (peekTimer.current) {
+        clearTimeout(peekTimer.current);
       }
     };
   }, []);
@@ -193,7 +216,10 @@ function UnifiedSidebar() {
     <SidebarChatProvider>
       <ActivePanelProvider>
         <aside
-          className="relative flex h-full flex-shrink-0 overflow-hidden"
+          className={cn(
+            'relative flex h-full flex-shrink-0',
+            storyLabUI && !expanded && peek ? 'overflow-visible' : 'overflow-hidden',
+          )}
           style={{
             width: expanded ? sidebarWidth : COLLAPSED_WIDTH,
             minWidth: expanded ? EXPANDED_MIN : COLLAPSED_WIDTH,
@@ -203,6 +229,7 @@ function UnifiedSidebar() {
               : `width ${TRANSITION_MS}ms ${EASING}, min-width ${TRANSITION_MS}ms ${EASING}, max-width ${TRANSITION_MS}ms ${EASING}`,
           }}
           aria-label={localize('com_nav_control_panel')}
+          onMouseLeave={handlePeekLeave}
         >
           <Sidebar
             links={links}
@@ -214,6 +241,36 @@ function UnifiedSidebar() {
             sidebarWidth={sidebarWidth}
             setSidebarWidth={setSidebarWidth}
           />
+          {/* Thin edge trigger — only reveal the peek when the cursor hits the very screen edge */}
+          {storyLabUI && !expanded && (
+            <div
+              className="absolute left-0 top-0 z-40 h-full w-1"
+              onMouseEnter={handlePeekEnter}
+              aria-hidden="true"
+            />
+          )}
+          {/* Hover-to-peek: reveal the full StoryLab sidebar as an overlay while collapsed */}
+          {storyLabUI && !expanded && peek && (
+            <div
+              className="absolute left-0 z-50 overflow-hidden rounded-tr-xl border-r border-t border-border-light bg-surface-primary-alt shadow-2xl animate-in fade-in slide-in-from-left-2 duration-200"
+              style={{
+                top: 52,
+                height: 'calc(100% - 52px)',
+                width: Math.max(sidebarWidth, EXPANDED_MIN),
+              }}
+            >
+              <StoryLabSidebar
+                expanded
+                links={links}
+                onCollapse={() => {
+                  setPeek(false);
+                  handleExpand();
+                }}
+                sidebarWidth={sidebarWidth}
+                setSidebarWidth={setSidebarWidth}
+              />
+            </div>
+          )}
         </aside>
       </ActivePanelProvider>
     </SidebarChatProvider>

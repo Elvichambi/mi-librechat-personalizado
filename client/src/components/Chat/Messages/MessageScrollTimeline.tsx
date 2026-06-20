@@ -54,10 +54,11 @@ export default function MessageScrollTimeline({
         .map((part) => {
           if (part == null) return '';
           if (typeof part === 'string') return part;
-          if ('text' in part) return part.text || '';
+          if ('text' in part) {
+            return typeof part.text === 'string' ? part.text : part.text?.value ?? '';
+          }
           if ('think' in part) {
-            const thinkText = typeof part.think === 'string' ? part.think : part.think?.text || '';
-            return thinkText;
+            return typeof part.think === 'string' ? part.think : part.think?.value ?? '';
           }
           return '';
         })

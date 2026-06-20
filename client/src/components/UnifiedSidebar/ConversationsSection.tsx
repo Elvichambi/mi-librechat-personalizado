@@ -19,124 +19,138 @@ import store from '~/store';
 
 const BookmarkNav = lazy(() => import('~/components/Nav/Bookmarks/BookmarkNav'));
 
-const ConversationsSection = memo(({ filterMode = 'all' }: { filterMode?: 'all' | 'active' | 'frozen' }) => {
-  const localize = useLocalize();
-  const isSmallScreen = useMediaQuery('(max-width: 768px)');
-  const setSidebarExpanded = useSetRecoilState(store.sidebarExpanded);
-  const { isAuthenticated } = useAuthContext();
-  useTitleGeneration(isAuthenticated);
+const ConversationsSection = memo(
+  ({
+    filterMode = 'all',
+    showFavorites = true,
+    showChatsHeader = true,
+  }: {
+    filterMode?: 'all' | 'active' | 'frozen';
+    showFavorites?: boolean;
+    showChatsHeader?: boolean;
+  }) => {
+    const localize = useLocalize();
+    const isSmallScreen = useMediaQuery('(max-width: 768px)');
+    const setSidebarExpanded = useSetRecoilState(store.sidebarExpanded);
+    const { isAuthenticated } = useAuthContext();
+    useTitleGeneration(isAuthenticated);
 
-  const [isChatsExpanded, setIsChatsExpanded] = useLocalStorage('chatsExpanded', true);
-  const [showLoading, setShowLoading] = useState(false);
-  const [tags, setTags] = useState<string[]>([]);
+    const [isChatsExpanded, setIsChatsExpanded] = useLocalStorage('chatsExpanded', true);
+    const [showLoading, setShowLoading] = useState(false);
+    const [tags, setTags] = useState<string[]>([]);
 
-  const hasAccessToBookmarks = useHasAccess({
-    permissionType: PermissionTypes.BOOKMARKS,
-    permission: Permissions.USE,
-  });
+    const hasAccessToBookmarks = useHasAccess({
+      permissionType: PermissionTypes.BOOKMARKS,
+      permission: Permissions.USE,
+    });
 
-  const search = useRecoilValue(store.search);
+    const search = useRecoilValue(store.search);
 
-  const { data, fetchNextPage, isFetchingNextPage, isLoading, isFetching } =
-    useConversationsInfiniteQuery(
-      {
-        tags: tags.length === 0 ? undefined : tags,
-        search: search.debouncedQuery || undefined,
+    const { data, fetchNextPage, isFetchingNextPage, isLoading, isFetching } =
+      useConversationsInfiniteQuery(
+        {
+          tags: tags.length === 0 ? undefined : tags,
+          search: search.debouncedQuery || undefined,
+        },
+        {
+          enabled: isAuthenticated,
+          staleTime: 30000,
+          cacheTime: 300000,
+        },
+      );
+
+    const computedHasNextPage = useMemo(() => {
+      if (data?.pages && data.pages.length > 0) {
+        const lastPage: ConversationListResponse = data.pages[data.pages.length - 1];
+        return lastPage.nextCursor !== null;
+      }
+      return false;
+    }, [data?.pages]);
+
+    const conversationsRef = useRef<List | null>(null);
+
+    const { moveToTop } = useNavScrolling<ConversationListResponse>({
+      setShowLoading,
+      fetchNextPage: async (options?) => {
+        if (computedHasNextPage) {
+          return fetchNextPage(options);
+        }
+        return Promise.resolve(
+          {} as InfiniteQueryObserverResult<ConversationListResponse, unknown>,
+        );
       },
-      {
-        enabled: isAuthenticated,
-        staleTime: 30000,
-        cacheTime: 300000,
-      },
+      isFetchingNext: isFetchingNextPage,
+    });
+
+    const conversations = useMemo(() => {
+      const allConvos = data ? data.pages.flatMap((page) => page.conversations) : [];
+      if (filterMode === 'frozen') return allConvos.filter((c) => c.isFrozen === true);
+      if (filterMode === 'active') return allConvos.filter((c) => !c.isFrozen);
+      return allConvos;
+    }, [data, filterMode]);
+
+    const toggleNav = useCallback(() => {
+      if (isSmallScreen) {
+        setSidebarExpanded(false);
+      }
+    }, [isSmallScreen, setSidebarExpanded]);
+
+    const loadMoreConversations = useCallback(() => {
+      if (isFetchingNextPage || !computedHasNextPage) {
+        return;
+      }
+      fetchNextPage();
+    }, [isFetchingNextPage, computedHasNextPage, fetchNextPage]);
+
+    const [isSearchLoading, setIsSearchLoading] = useState(
+      !!search.query && (search.isTyping || isLoading || isFetching),
     );
 
-  const computedHasNextPage = useMemo(() => {
-    if (data?.pages && data.pages.length > 0) {
-      const lastPage: ConversationListResponse = data.pages[data.pages.length - 1];
-      return lastPage.nextCursor !== null;
-    }
-    return false;
-  }, [data?.pages]);
-
-  const conversationsRef = useRef<List | null>(null);
-
-  const { moveToTop } = useNavScrolling<ConversationListResponse>({
-    setShowLoading,
-    fetchNextPage: async (options?) => {
-      if (computedHasNextPage) {
-        return fetchNextPage(options);
+    useEffect(() => {
+      if (search.isTyping) {
+        setIsSearchLoading(true);
+      } else if (!isLoading && !isFetching) {
+        setIsSearchLoading(false);
+      } else if (!!search.query && (isLoading || isFetching)) {
+        setIsSearchLoading(true);
       }
-      return Promise.resolve({} as InfiniteQueryObserverResult<ConversationListResponse, unknown>);
-    },
-    isFetchingNext: isFetchingNextPage,
-  });
+    }, [search.query, search.isTyping, isLoading, isFetching]);
 
-  const conversations = useMemo(() => {
-    const allConvos = data ? data.pages.flatMap((page) => page.conversations) : [];
-    if (filterMode === 'frozen') return allConvos.filter((c: any) => c.isFrozen === true);
-    if (filterMode === 'active') return allConvos.filter((c: any) => !c.isFrozen);
-    return allConvos;
-  }, [data, filterMode]);
-
-  const toggleNav = useCallback(() => {
-    if (isSmallScreen) {
-      setSidebarExpanded(false);
-    }
-  }, [isSmallScreen, setSidebarExpanded]);
-
-  const loadMoreConversations = useCallback(() => {
-    if (isFetchingNextPage || !computedHasNextPage) {
-      return;
-    }
-    fetchNextPage();
-  }, [isFetchingNextPage, computedHasNextPage, fetchNextPage]);
-
-  const [isSearchLoading, setIsSearchLoading] = useState(
-    !!search.query && (search.isTyping || isLoading || isFetching),
-  );
-
-  useEffect(() => {
-    if (search.isTyping) {
-      setIsSearchLoading(true);
-    } else if (!isLoading && !isFetching) {
-      setIsSearchLoading(false);
-    } else if (!!search.query && (isLoading || isFetching)) {
-      setIsSearchLoading(true);
-    }
-  }, [search.query, search.isTyping, isLoading, isFetching]);
-
-  return (
-    <div
-      className="flex h-full min-h-0 flex-col overflow-hidden pb-3"
-      role="region"
-      aria-label={localize('com_ui_chat_history')}
-    >
-      {filterMode === 'all' && (
-        <div className="flex items-center gap-0.5 px-3">
-          {hasAccessToBookmarks && (
-            <Suspense fallback={null}>
-              <BookmarkNav tags={tags} setTags={setTags} />
-            </Suspense>
-          )}
-          {search.enabled && <SearchBar isSmallScreen={isSmallScreen} />}
+    return (
+      <div
+        className="flex h-full min-h-0 flex-col overflow-hidden"
+        role="region"
+        aria-label={localize('com_ui_chat_history')}
+      >
+        {filterMode === 'all' && (
+          <div className="flex items-center gap-0.5 px-3">
+            {hasAccessToBookmarks && (
+              <Suspense fallback={null}>
+                <BookmarkNav tags={tags} setTags={setTags} />
+              </Suspense>
+            )}
+            {search.enabled && <SearchBar isSmallScreen={isSmallScreen} />}
+          </div>
+        )}
+        <div className="flex min-h-0 flex-grow flex-col overflow-hidden">
+          <Conversations
+            conversations={conversations}
+            moveToTop={moveToTop}
+            toggleNav={toggleNav}
+            containerRef={conversationsRef}
+            loadMoreConversations={loadMoreConversations}
+            isLoading={isFetchingNextPage || showLoading || isLoading}
+            isSearchLoading={isSearchLoading}
+            isChatsExpanded={isChatsExpanded}
+            setIsChatsExpanded={setIsChatsExpanded}
+            showFavorites={showFavorites}
+            showChatsHeader={showChatsHeader}
+          />
         </div>
-      )}
-      <div className="flex min-h-0 flex-grow flex-col overflow-hidden">
-        <Conversations
-          conversations={conversations}
-          moveToTop={moveToTop}
-          toggleNav={toggleNav}
-          containerRef={conversationsRef}
-          loadMoreConversations={loadMoreConversations}
-          isLoading={isFetchingNextPage || showLoading || isLoading}
-          isSearchLoading={isSearchLoading}
-          isChatsExpanded={isChatsExpanded}
-          setIsChatsExpanded={setIsChatsExpanded}
-        />
       </div>
-    </div>
-  );
-});
+    );
+  },
+);
 
 ConversationsSection.displayName = 'ConversationsSection';
 

@@ -1,25 +1,74 @@
-import React, { memo, useMemo } from 'react';
+import React, { memo, useMemo, useCallback } from 'react';
 import { useRecoilValue } from 'recoil';
-import { useMediaQuery } from '@librechat/client';
-import { getConfigDefaults, PermissionTypes, Permissions } from 'librechat-data-provider';
-import { ModelSelectorProvider, useModelSelectorContext } from './Menus/Endpoints/ModelSelectorContext';
+import { useQueryClient } from '@tanstack/react-query';
+import { SquarePen } from 'lucide-react';
+import { TooltipAnchor, useMediaQuery } from '@librechat/client';
+import {
+  getConfigDefaults,
+  PermissionTypes,
+  Permissions,
+  QueryKeys,
+} from 'librechat-data-provider';
+import {
+  ModelSelectorProvider,
+  useModelSelectorContext,
+} from './Menus/Endpoints/ModelSelectorContext';
 import { ModelSelectorChatProvider } from './Menus/Endpoints/ModelSelectorChatContext';
 import { getSelectedIcon, getDisplayValue } from './Menus/Endpoints/utils';
 import { useGetStartupConfig } from '~/data-provider';
 import ExportAndShareMenu from './ExportAndShareMenu';
 import { OpenSidebar, PresetsMenu } from './Menus';
 import BookmarkMenu from './Menus/BookmarkMenu';
+import FreezeButton from './Menus/FreezeButton';
 import { TemporaryChat } from './TemporaryChat';
 import AddMultiConvo from './AddMultiConvo';
-import { useHasAccess, useLocalize } from '~/hooks';
-import { cn } from '~/utils';
+import { useHasAccess, useLocalize, useNewConvo } from '~/hooks';
+import { clearMessagesCache, cn } from '~/utils';
 import store from '~/store';
 
 const defaultInterface = getConfigDefaults().interface;
 
+function CollapsedNewChat() {
+  const localize = useLocalize();
+  const queryClient = useQueryClient();
+  const { newConversation } = useNewConvo();
+  const conversation = useRecoilValue(store.conversationByIndex(0));
+
+  const handleClick = useCallback(
+    (e: React.MouseEvent<HTMLAnchorElement>) => {
+      if (e.button !== 0 || e.ctrlKey || e.metaKey) {
+        return;
+      }
+      e.preventDefault();
+      clearMessagesCache(queryClient, conversation?.conversationId);
+      queryClient.invalidateQueries([QueryKeys.messages]);
+      newConversation();
+    },
+    [queryClient, conversation?.conversationId, newConversation],
+  );
+
+  return (
+    <TooltipAnchor
+      description={localize('com_ui_new_chat')}
+      render={
+        <a
+          href="/c/new"
+          onClick={handleClick}
+          aria-label={localize('com_ui_new_chat')}
+          data-testid="storylab-header-new-chat"
+          className="flex h-10 w-10 items-center justify-center rounded-xl border border-border-light bg-presentation text-text-primary transition-colors hover:bg-surface-active-alt"
+        >
+          <SquarePen className="icon-md" aria-hidden="true" />
+        </a>
+      }
+    />
+  );
+}
+
 function ActiveModelHeaderDisplay() {
   const localize = useLocalize();
-  const { mappedEndpoints, selectedValues, modelSpecs, endpointsConfig } = useModelSelectorContext();
+  const { mappedEndpoints, selectedValues, modelSpecs, endpointsConfig } =
+    useModelSelectorContext();
 
   const selectedIcon = useMemo(
     () =>
@@ -50,7 +99,7 @@ function ActiveModelHeaderDisplay() {
           {selectedIcon}
         </div>
       )}
-      <span className="truncate text-left max-w-[200px] font-semibold">{selectedDisplayValue}</span>
+      <span className="max-w-[200px] truncate text-left font-semibold">{selectedDisplayValue}</span>
     </div>
   );
 }
@@ -85,7 +134,8 @@ function Header() {
     <div className="via-presentation/70 md:from-presentation/80 md:via-presentation/50 2xl:from-presentation/0 absolute top-0 z-10 flex h-[52px] w-full items-center justify-between bg-gradient-to-b from-presentation to-transparent p-2 font-semibold text-text-primary 2xl:via-transparent">
       <div className="hide-scrollbar flex w-full items-center justify-between gap-2 overflow-x-auto">
         <div className="mx-1 flex items-center">
-          {!navVisible && <OpenSidebar />}
+          {!navVisible && isSmallScreen && <OpenSidebar />}
+          {!navVisible && !isSmallScreen && <CollapsedNewChat />}
           {navVisible && isSmallScreen && <OpenSidebar />}
           {!(navVisible && isSmallScreen) && (
             <div
@@ -101,6 +151,7 @@ function Header() {
               </ModelSelectorChatProvider>
               {interfaceConfig.presets === true && interfaceConfig.modelSelect && <PresetsMenu />}
               {hasAccessToBookmarks === true && <BookmarkMenu />}
+              <FreezeButton />
               {hasAccessToMultiConvo === true && <AddMultiConvo />}
               {isSmallScreen && (
                 <>

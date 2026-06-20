@@ -382,7 +382,11 @@ async function duplicateConversation({ userId, conversationId, title }) {
   cloneMessagesWithTimestamps(messagesToClone, importBatchBuilder);
 
   const duplicateTitle = title || originalConvo.title;
-  const result = importBatchBuilder.finishConversation(duplicateTitle, new Date(), originalConvo);
+  /** A duplicate is always an editable working copy, never a frozen template */
+  const result = importBatchBuilder.finishConversation(duplicateTitle, new Date(), {
+    ...originalConvo,
+    isFrozen: false,
+  });
   await importBatchBuilder.saveBatch();
   logger.debug(
     `user: ${userId} | New conversation "${duplicateTitle}" duplicated from conversation ID ${conversationId}`,
