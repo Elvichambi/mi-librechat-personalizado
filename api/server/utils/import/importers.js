@@ -271,7 +271,12 @@ async function importLibreChatConvo(
       firstMessageDate = null;
     }
 
-    importBatchBuilder.finishConversation(jsonData.title, firstMessageDate ?? new Date(), options);
+    const convoData = {
+      ...options,
+      isFrozen: jsonData.isFrozen ?? false,
+    };
+
+    importBatchBuilder.finishConversation(jsonData.title, firstMessageDate ?? new Date(), convoData);
     await importBatchBuilder.saveBatch();
     logger.debug(`user: ${requestUserId} | Conversation "${jsonData.title}" imported`);
   } catch (error) {

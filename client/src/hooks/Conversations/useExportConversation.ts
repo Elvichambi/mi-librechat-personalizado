@@ -347,6 +347,7 @@ export default function useExportConversation({
       conversationId: conversation?.conversationId,
       endpoint: conversation?.endpoint,
       title: conversation?.title,
+      isFrozen: conversation?.isFrozen,
       exportAt: new Date().toTimeString(),
       branches: exportBranches,
       recursive: recursive,
