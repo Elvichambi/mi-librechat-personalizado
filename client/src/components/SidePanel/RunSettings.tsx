@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useRecoilState, useRecoilValue } from 'recoil';
-import { ChevronLeft, ChevronRight, Search, Star, Key, CheckCircle, HelpCircle, Trash2, ChevronDown, ChevronUp, List, ArrowLeft, Save, Plus } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Search, Star, Key, CheckCircle, HelpCircle, Trash2, ChevronDown, ChevronUp, List, ArrowLeft, Save, Plus, Folder, FolderPlus, Pencil } from 'lucide-react';
 import { useSetIndexOptions } from '~/hooks/Conversations';
 import { useChatContext } from '~/Providers';
 import Parameters from '~/components/SidePanel/Parameters/Panel';
@@ -144,8 +144,13 @@ function ModelSelectionSidebar({ onClose, panelWidth, isResizing, handleResizeSt
 
       ep.models.forEach((m) => {
         const modelId = m.name;
+        const isFavorite = isFavoriteModel(modelId, ep.value);
         
-        if (selectedTab !== 'all' && selectedTab !== ep.value) {
+        if (selectedTab === 'favorites') {
+          if (!isFavorite) {
+            return;
+          }
+        } else if (selectedTab !== 'all' && selectedTab !== ep.value) {
           return;
         }
 
@@ -161,8 +166,6 @@ function ModelSelectionSidebar({ onClose, panelWidth, isResizing, handleResizeSt
           !selectedValues.modelSpec &&
           selectedValues.endpoint === ep.value &&
           selectedValues.model === modelId;
-
-        const isFavorite = isFavoriteModel(modelId, ep.value);
 
         list.push({ modelId, endpoint: ep, isSelected, isFavorite });
       });
@@ -232,6 +235,20 @@ function ModelSelectionSidebar({ onClose, panelWidth, isResizing, handleResizeSt
         >
           All
         </button>
+        <button
+          onClick={() => {
+            setSelectedTab('favorites');
+            localStorage.setItem('storylab:selected-model-tab', 'favorites');
+          }}
+          className={`flex items-center gap-1 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider whitespace-nowrap transition-all duration-200 border ${
+            selectedTab === 'favorites'
+              ? 'bg-blue-600 text-white border-blue-600'
+              : 'bg-surface-secondary text-text-secondary border-border-light hover:bg-surface-hover hover:text-text-primary'
+          }`}
+        >
+          <Star className="h-3 w-3 shrink-0 fill-current text-amber-500" />
+          <span>Favoritos</span>
+        </button>
         {mappedEndpoints?.map((ep) => (
           <button
             key={ep.value}
@@ -291,6 +308,7 @@ interface InstructionTemplate {
   title: string;
   description: string;
   text: string;
+  category?: string;
 }
 
 const defaultTemplates: InstructionTemplate[] = [
@@ -326,6 +344,14 @@ function SystemInstructionsSidebar({ onClose, panelWidth, isResizing, handleResi
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
+  const [tempCategory, setTempCategory] = useState('');
+  const [tempCategorySelect, setTempCategorySelect] = useState('');
+  const [collapsedFolders, setCollapsedFolders] = useState<Record<string, boolean>>({});
+  const [showNewFolderInput, setShowNewFolderInput] = useState(false);
+  const [newFolderNameInput, setNewFolderNameInput] = useState('');
+  const [renamingFolder, setRenamingFolder] = useState<string | null>(null);
+  const [renameFolderValue, setRenameFolderValue] = useState('');
+
   // Ref for dropdown positioning (fixed position to avoid clipping by parent overflow)
   const dropdownAreaRef = React.useRef<HTMLDivElement>(null);
   const [dropdownPos, setDropdownPos] = useState<{top: number; left: number; width: number} | null>(null);
@@ -350,7 +376,8 @@ function SystemInstructionsSidebar({ onClose, panelWidth, isResizing, handleResi
             id: item.id || String(Date.now()),
             title: item.title || 'Untitled Prompt',
             description: item.description || '',
-            text: item.text || ''
+            text: item.text || '',
+            category: item.category
           }));
         }
       } catch {
@@ -359,6 +386,138 @@ function SystemInstructionsSidebar({ onClose, panelWidth, isResizing, handleResi
     }
     return defaultTemplates;
   });
+
+
+  const recentTemplates = useMemo(() => {
+    return instructions.slice(0, 4);
+  }, [instructions]);
+
+  const handleMoveToFolder = (id: string, folderName: string) => {
+    const updated = instructions.map(item => {
+      if (item.id === id) {
+        return {
+          ...item,
+          category: folderName === 'Sin clasificar' ? undefined : folderName
+        };
+      }
+      return item;
+    });
+    setInstructions(updated);
+    localStorage.setItem('storylab:system-instructions', JSON.stringify(updated));
+  };
+
+  const toggleFolderCollapse = (folderName: string) => {
+    setCollapsedFolders(prev => ({
+      ...prev,
+      [folderName]: !prev[folderName]
+    }));
+  };
+
+  const [emptyFolders, setEmptyFolders] = useState<string[]>(() => {
+    const saved = localStorage.getItem('storylab:empty-folders');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      } catch {
+        // fail-safe
+      }
+    }
+    return [];
+  });
+
+  const allFolders = useMemo(() => {
+    const cats = new Set<string>();
+    instructions.forEach(item => {
+      if (item.category && item.category.trim() !== '') {
+        cats.add(item.category.trim());
+      }
+    });
+    emptyFolders.forEach(folder => {
+      if (folder && folder.trim() !== '') {
+        cats.add(folder.trim());
+      }
+    });
+    return Array.from(cats).sort((a, b) => a.localeCompare(b));
+  }, [instructions, emptyFolders]);
+
+  const handleConfirmCreateFolder = () => {
+    const cleanName = newFolderNameInput.trim();
+    if (!cleanName) return;
+    if (cleanName.toLowerCase() === 'recientes' || cleanName.toLowerCase() === 'sin clasificar') {
+      window.alert('Este nombre de carpeta está reservado.');
+      return;
+    }
+    if (allFolders.includes(cleanName)) {
+      window.alert('La carpeta ya existe.');
+      return;
+    }
+    const updated = [...emptyFolders, cleanName];
+    setEmptyFolders(updated);
+    localStorage.setItem('storylab:empty-folders', JSON.stringify(updated));
+    setShowNewFolderInput(false);
+    setNewFolderNameInput('');
+  };
+
+  const handleConfirmRenameFolder = (oldName: string) => {
+    const cleanName = renameFolderValue.trim();
+    if (!cleanName || cleanName === oldName) {
+      setRenamingFolder(null);
+      return;
+    }
+
+    if (cleanName.toLowerCase() === 'recientes' || cleanName.toLowerCase() === 'sin clasificar') {
+      window.alert('Este nombre de carpeta está reservado.');
+      return;
+    }
+
+    if (allFolders.includes(cleanName) && cleanName !== oldName) {
+      window.alert('Ya existe una carpeta con ese nombre.');
+      return;
+    }
+
+    // Update in emptyFolders if it was there
+    let updatedEmpty = [...emptyFolders];
+    if (updatedEmpty.includes(oldName)) {
+      updatedEmpty = updatedEmpty.map(f => f === oldName ? cleanName : f);
+      setEmptyFolders(updatedEmpty);
+      localStorage.setItem('storylab:empty-folders', JSON.stringify(updatedEmpty));
+    }
+
+    // Update the templates themselves
+    const updatedInstructions = instructions.map(item => {
+      if (item.category === oldName) {
+        return { ...item, category: cleanName };
+      }
+      return item;
+    });
+    setInstructions(updatedInstructions);
+    localStorage.setItem('storylab:system-instructions', JSON.stringify(updatedInstructions));
+    setRenamingFolder(null);
+  };
+
+  const handleDeleteFolder = (folderName: string) => {
+    const confirmDelete = window.confirm(
+      `¿Estás seguro de que deseas eliminar la carpeta "${folderName}"?\n\nLos prompts dentro de ella no se borrarán, sino que se moverán a "Sin clasificar".`
+    );
+    if (!confirmDelete) return;
+
+    // Remove from emptyFolders
+    const updatedEmpty = emptyFolders.filter(f => f !== folderName);
+    setEmptyFolders(updatedEmpty);
+    localStorage.setItem('storylab:empty-folders', JSON.stringify(updatedEmpty));
+
+    // Update templates (remove category)
+    const updatedInstructions = instructions.map(item => {
+      if (item.category === folderName) {
+        return { ...item, category: undefined };
+      }
+      return item;
+    });
+    setInstructions(updatedInstructions);
+    localStorage.setItem('storylab:system-instructions', JSON.stringify(updatedInstructions));
+  };
+
 
   const {
     promptPrefix = '',
@@ -392,11 +551,15 @@ function SystemInstructionsSidebar({ onClose, panelWidth, isResizing, handleResi
       setTempTitle('Custom Instructions');
       setTempDescription('');
       setTempText(systemText);
+      setTempCategory('');
+      setTempCategorySelect('');
       // systemText is already the active prompt, no need to re-sync
     } else if (selectedId === 'create-new' || selectedId === 'empty') {
       setTempTitle('');
       setTempDescription('');
       setTempText('');
+      setTempCategory('');
+      setTempCategorySelect('');
       // Clear prompt from active conversation
       setOption('promptPrefix')('');
       setOption('system')('');
@@ -406,6 +569,8 @@ function SystemInstructionsSidebar({ onClose, panelWidth, isResizing, handleResi
         setTempTitle(found.title);
         setTempDescription(found.description || '');
         setTempText(found.text);
+        setTempCategory(found.category || '');
+        setTempCategorySelect(found.category || '');
         // Apply selected template to the active conversation
         setOption('promptPrefix')(found.text);
         setOption('system')(found.text);
@@ -426,6 +591,7 @@ function SystemInstructionsSidebar({ onClose, panelWidth, isResizing, handleResi
     const debounceTimer = setTimeout(() => {
       let updatedList: InstructionTemplate[];
       let newId = selectedId;
+      const categoryVal = tempCategory.trim();
 
       if (selectedId === 'custom' || selectedId === 'create-new' || selectedId === 'empty') {
         newId = String(Date.now());
@@ -433,7 +599,8 @@ function SystemInstructionsSidebar({ onClose, panelWidth, isResizing, handleResi
           id: newId,
           title: tempTitle.trim(),
           description: tempDescription.trim(),
-          text: tempText
+          text: tempText,
+          category: categoryVal || undefined
         };
         updatedList = [newPreset, ...instructions];
       } else {
@@ -443,7 +610,8 @@ function SystemInstructionsSidebar({ onClose, panelWidth, isResizing, handleResi
               ...item,
               title: tempTitle.trim(),
               description: tempDescription.trim(),
-              text: tempText
+              text: tempText,
+              category: categoryVal || undefined
             };
           }
           return item;
@@ -464,6 +632,8 @@ function SystemInstructionsSidebar({ onClose, panelWidth, isResizing, handleResi
     setTempTitle('');
     setTempDescription('');
     setTempText('');
+    setTempCategory('');
+    setTempCategorySelect('');
     setOption('promptPrefix')('');
     setOption('system')('');
     setShowListView(false);
@@ -535,6 +705,7 @@ function SystemInstructionsSidebar({ onClose, panelWidth, isResizing, handleResi
 
     let updatedList: InstructionTemplate[];
     let newId = selectedId;
+    const categoryVal = tempCategory.trim();
 
     if (selectedId === 'custom' || selectedId === 'create-new' || selectedId === 'empty') {
       newId = String(Date.now());
@@ -542,7 +713,8 @@ function SystemInstructionsSidebar({ onClose, panelWidth, isResizing, handleResi
         id: newId,
         title: tempTitle.trim(),
         description: tempDescription.trim(),
-        text: tempText
+        text: tempText,
+        category: categoryVal || undefined
       };
       updatedList = [newPreset, ...instructions];
     } else {
@@ -552,7 +724,8 @@ function SystemInstructionsSidebar({ onClose, panelWidth, isResizing, handleResi
             ...item,
             title: tempTitle.trim(),
             description: tempDescription.trim(),
-            text: tempText
+            text: tempText,
+            category: categoryVal || undefined
           };
         }
         return item;
@@ -586,6 +759,87 @@ function SystemInstructionsSidebar({ onClose, panelWidth, isResizing, handleResi
     );
   }, [instructions, searchQuery]);
 
+  const renderTemplateCard = (item: InstructionTemplate) => {
+    const isExpanded = !!expandedIds[item.id];
+    return (
+      <div
+        key={item.id}
+        draggable
+        onDragStart={(e) => {
+          e.dataTransfer.setData('text/plain', item.id);
+        }}
+        className={`w-full text-left p-3.5 rounded-xl border transition-all flex flex-col gap-1.5 cursor-grab active:cursor-grabbing select-none ${
+          selectedId === item.id
+            ? 'border-border-medium bg-surface-hover shadow-sm'
+            : 'border-border-light bg-surface-secondary hover:bg-surface-hover hover:border-border-medium'
+        }`}
+        onClick={() => {
+          setSelectedId(item.id);
+          setShowListView(false);
+        }}
+      >
+        <div className="flex items-center justify-between w-full">
+          <span className="font-bold text-xs text-text-primary">{item.title || 'Untitled Prompt'}</span>
+          <div className="flex items-center gap-1.5">
+            {item.text && (
+              <span
+                onClick={(e) => toggleExpand(e, item.id)}
+                className="text-xs text-text-secondary hover:text-text-primary shrink-0 font-semibold px-2 py-0.5 rounded bg-surface-tertiary/50 hover:bg-surface-tertiary select-none flex items-center gap-0.5 transition-colors cursor-pointer"
+              >
+                <span>{isExpanded ? 'Ocultar' : 'Mostrar'}</span>
+                {isExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleRequestDelete(item.id);
+              }}
+              className="flex h-6 w-6 items-center justify-center rounded-lg text-text-secondary hover:text-red-400 hover:bg-red-500/10 transition-all shrink-0 cursor-pointer"
+              aria-label={`Delete ${item.title}`}
+              title="Eliminar plantilla"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+            {selectedId === item.id && (
+              <CheckCircle className="h-4 w-4 text-text-secondary shrink-0" />
+            )}
+          </div>
+        </div>
+        {item.description && (
+          <span className="text-[10px] text-text-secondary leading-relaxed line-clamp-2">{item.description}</span>
+        )}
+        {isExpanded && item.text && (
+          <pre className="text-xs font-sans text-text-primary dark:text-neutral-100 whitespace-pre-wrap break-all bg-surface-primary/75 p-3.5 rounded-xl border border-border-light/50 border-l-4 border-l-border-medium mt-1 max-h-36 overflow-y-auto w-full leading-relaxed select-text cursor-text">
+            {item.text}
+          </pre>
+        )}
+      </div>
+    );
+  };
+
+  const renderDropdownItem = (item: InstructionTemplate) => {
+    const isSelected = selectedId === item.id;
+    return (
+      <button
+        key={item.id}
+        type="button"
+        onClick={() => {
+          setSelectedId(item.id);
+          setIsDropdownOpen(false);
+        }}
+        className={`w-full text-left px-3.5 py-2 text-[14px] transition-colors truncate rounded-md shrink-0 ${
+          isSelected 
+            ? 'bg-white/[0.16] text-white font-semibold' 
+            : 'text-[#ccc] hover:text-white hover:bg-white/[0.08] font-normal'
+        }`}
+      >
+        {item.title || 'Untitled'}
+      </button>
+    );
+  };
+
   return (
     <div 
       className={`flex h-full flex-shrink-0 flex-col border-l border-border-light bg-surface-primary dark:bg-[#131314] z-[9999] fixed right-0 top-0 shadow-2xl ${
@@ -614,92 +868,249 @@ function SystemInstructionsSidebar({ onClose, panelWidth, isResizing, handleResi
               onClick={() => setShowListView(false)}
               className="flex h-7 w-7 items-center justify-center rounded-lg border border-border-light text-text-secondary hover:bg-surface-hover hover:text-text-primary transition-all shrink-0"
               aria-label="Back to instructions editor"
-              title="Back"
+              title="Volver"
             >
               <ArrowLeft className="h-4 w-4" />
             </button>
-            <h2 className="text-sm font-bold text-text-primary uppercase tracking-wider truncate">Select Prompt Template</h2>
+            <h2 className="text-sm font-bold text-text-primary uppercase tracking-wider truncate">Seleccionar Plantilla de Prompt</h2>
           </div>
 
-          {/* Search box */}
-          <div className="px-4 pt-3 pb-1.5 shrink-0">
-            <div className="relative flex items-center">
+          {/* Search box and folder creation */}
+          <div className="px-4 pt-3 pb-1.5 shrink-0 flex gap-2 items-center">
+            <div className="relative flex-grow flex items-center">
               <Search className="absolute left-3 h-4 w-4 text-text-tertiary" />
               <input
                 type="text"
-                placeholder="Search templates..."
+                placeholder="Buscar prompts..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full pl-9 pr-4 py-2 text-xs rounded-xl border border-border-light bg-surface-secondary text-text-primary focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               />
             </div>
+            <button
+              type="button"
+              onClick={() => {
+                setShowNewFolderInput(!showNewFolderInput);
+                if (!showNewFolderInput) setNewFolderNameInput('');
+              }}
+              className={`flex h-8 w-8 items-center justify-center rounded-xl border border-border-light text-text-secondary hover:bg-surface-hover hover:text-text-primary transition-all shrink-0 cursor-pointer ${showNewFolderInput ? 'bg-surface-hover text-text-primary' : ''}`}
+              title="Nueva carpeta"
+            >
+              <FolderPlus className="h-4.5 w-4.5" />
+            </button>
           </div>
 
+          {/* Inline Folder Creation Form */}
+          {showNewFolderInput && (
+            <div className="mx-4 mt-2 px-3.5 py-2 flex gap-2 items-center bg-surface-secondary border border-border-light rounded-xl animate-fade-in shrink-0">
+              <input
+                type="text"
+                placeholder="Nombre de la carpeta..."
+                value={newFolderNameInput}
+                onChange={(e) => setNewFolderNameInput(e.target.value)}
+                className="flex-grow bg-surface-primary border border-border-light text-xs rounded-lg px-2.5 py-1 text-text-primary focus:border-blue-500 focus:outline-none"
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleConfirmCreateFolder();
+                  if (e.key === 'Escape') { setShowNewFolderInput(false); setNewFolderNameInput(''); }
+                }}
+              />
+              <button
+                type="button"
+                onClick={handleConfirmCreateFolder}
+                className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer shrink-0"
+              >
+                OK
+              </button>
+              <button
+                type="button"
+                onClick={() => { setShowNewFolderInput(false); setNewFolderNameInput(''); }}
+                className="text-text-secondary hover:text-text-primary text-xs font-semibold px-2 py-1.5 cursor-pointer shrink-0"
+              >
+                No
+              </button>
+            </div>
+          )}
+
           {/* Scrollable Templates List */}
-          <div className="flex-grow overflow-y-auto p-4 flex flex-col gap-2.5 min-h-0">
+          <div className="flex-grow overflow-y-auto p-4 flex flex-col gap-3 min-h-0">
             {filteredInstructions.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-10 text-center text-text-tertiary">
                 <HelpCircle className="h-10 w-10 mb-2 opacity-50" />
-                <p className="text-xs">No matching templates found</p>
+                <p className="text-xs">No se encontraron plantillas coincidentes</p>
               </div>
+            ) : searchQuery ? (
+              // Search active: render flat list
+              filteredInstructions.map(item => renderTemplateCard(item))
             ) : (
-              filteredInstructions.map(item => {
-                const isExpanded = !!expandedIds[item.id];
-                return (
-                  <div
-                    key={item.id}
-                    className={`w-full text-left p-3.5 rounded-xl border transition-all flex flex-col gap-1.5 cursor-pointer ${
-                      selectedId === item.id
-                        ? 'border-border-medium bg-surface-hover shadow-sm'
-                        : 'border-border-light bg-surface-secondary hover:bg-surface-hover hover:border-border-medium'
-                    }`}
-                    onClick={() => {
-                      setSelectedId(item.id);
-                      setShowListView(false);
-                    }}
-                  >
-                    <div className="flex items-center justify-between w-full">
-                      <span className="font-bold text-xs text-text-primary">{item.title || 'Untitled Prompt'}</span>
-                      <div className="flex items-center gap-1.5">
-                        {item.text && (
-                          <span
-                            onClick={(e) => toggleExpand(e, item.id)}
-                            className="text-[10px] text-text-tertiary hover:text-text-primary shrink-0 font-medium px-2 py-0.5 rounded hover:bg-surface-tertiary select-none flex items-center gap-0.5 transition-colors"
-                          >
-                            <span>{isExpanded ? 'Hide' : 'Show'}</span>
-                            {isExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-                          </span>
-                        )}
-                        {/* Delete button for each template */}
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleRequestDelete(item.id);
-                          }}
-                          className="flex h-6 w-6 items-center justify-center rounded-lg text-text-tertiary hover:text-red-400 hover:bg-red-500/10 transition-all shrink-0"
-                          aria-label={`Delete ${item.title}`}
-                          title="Delete template"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                        {selectedId === item.id && (
-                          <CheckCircle className="h-4 w-4 text-text-secondary shrink-0" />
+              // Grouped by folders view
+              <div className="flex flex-col gap-4">
+                {/* Recientes Folder */}
+                {recentTemplates.length > 0 && (() => {
+                  const isCollapsed = collapsedFolders['Recientes'] !== undefined ? collapsedFolders['Recientes'] : false;
+                  return (
+                    <div className="flex flex-col gap-2">
+                      <button
+                        onClick={() => toggleFolderCollapse('Recientes')}
+                        className="w-full flex items-center gap-2 px-3.5 py-2.5 text-xs font-bold rounded-xl border border-border-light bg-surface-secondary hover:bg-surface-hover text-text-primary hover:border-border-medium transition-all select-none text-left"
+                      >
+                        {!isCollapsed ? <ChevronDown className="h-4 w-4 shrink-0" /> : <ChevronRight className="h-4 w-4 shrink-0" />}
+                        <Star className="h-4 w-4 text-amber-500 fill-current shrink-0" />
+                        <span className="flex-grow">Recientes</span>
+                        <span className="text-[11px] font-bold text-text-secondary bg-white/10 dark:bg-white/[0.08] px-2.5 py-0.5 rounded-full border border-white/5">{recentTemplates.length}</span>
+                      </button>
+                      {!isCollapsed && (
+                        <div className="flex flex-col gap-2 pl-3 mt-1 border-l border-border-light/30 ml-3.5">
+                          {recentTemplates.map(item => renderTemplateCard(item))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {/* Sin clasificar Folder */}
+                {(() => {
+                  const uncategorized = instructions.filter(item => !item.category || item.category.trim() === '');
+                  if (uncategorized.length === 0 && allFolders.length === 0) return null;
+                  const isCollapsed = collapsedFolders['Sin clasificar'] !== undefined ? collapsedFolders['Sin clasificar'] : true;
+                  return (
+                    <div
+                      onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add('bg-blue-500/10'); }}
+                      onDragLeave={(e) => { e.currentTarget.classList.remove('bg-blue-500/10'); }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        e.currentTarget.classList.remove('bg-blue-500/10');
+                        const id = e.dataTransfer.getData('text/plain');
+                        if (id) handleMoveToFolder(id, 'Sin clasificar');
+                      }}
+                      className="flex flex-col gap-2 rounded-lg transition-all"
+                    >
+                      <button
+                        onClick={() => toggleFolderCollapse('Sin clasificar')}
+                        className="w-full flex items-center gap-2 px-3.5 py-2.5 text-xs font-bold rounded-xl border border-border-light bg-surface-secondary hover:bg-surface-hover text-text-primary hover:border-border-medium transition-all select-none text-left"
+                      >
+                        {!isCollapsed ? <ChevronDown className="h-4 w-4 shrink-0" /> : <ChevronRight className="h-4 w-4 shrink-0" />}
+                        <Folder className="h-4 w-4 text-text-secondary shrink-0" />
+                        <span className="flex-grow">Sin clasificar</span>
+                        <span className="text-[11px] font-bold text-text-secondary bg-white/10 dark:bg-white/[0.08] px-2.5 py-0.5 rounded-full border border-white/5">{uncategorized.length}</span>
+                      </button>
+                      {!isCollapsed && (
+                        <div className="flex flex-col gap-2 pl-3 mt-1 border-l border-border-light/30 ml-3.5">
+                          {uncategorized.length === 0 ? (
+                            <div className="text-[11px] text-text-tertiary italic py-1 pl-2">
+                              Carpeta vacía
+                            </div>
+                          ) : (
+                            uncategorized.map(item => renderTemplateCard(item))
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {/* User Folders */}
+                {allFolders.map(cat => {
+                  const catItems = instructions.filter(item => item.category && item.category.trim() === cat);
+                  const isCollapsed = collapsedFolders[cat] !== undefined ? collapsedFolders[cat] : true;
+                  return (
+                    <div
+                      key={cat}
+                      onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add('bg-blue-500/10'); }}
+                      onDragLeave={(e) => { e.currentTarget.classList.remove('bg-blue-500/10'); }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        e.currentTarget.classList.remove('bg-blue-500/10');
+                        const id = e.dataTransfer.getData('text/plain');
+                        if (id) handleMoveToFolder(id, cat);
+                      }}
+                      className="flex flex-col gap-2 rounded-lg transition-all"
+                    >
+                      <div className="w-full flex items-center justify-between group px-3.5 py-2.5 rounded-xl border border-border-light bg-surface-secondary hover:bg-surface-hover hover:border-border-medium transition-all">
+                        {renamingFolder === cat ? (
+                          <div className="flex w-full gap-2 items-center" onClick={(e) => e.stopPropagation()}>
+                            <input
+                              type="text"
+                              value={renameFolderValue}
+                              onChange={(e) => setRenameFolderValue(e.target.value)}
+                              className="flex-grow bg-surface-primary border border-border-light text-xs rounded-lg px-2 py-1 text-text-primary focus:border-blue-500 focus:outline-none"
+                              autoFocus
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') handleConfirmRenameFolder(cat);
+                                if (e.key === 'Escape') setRenamingFolder(null);
+                              }}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => handleConfirmRenameFolder(cat)}
+                              className="bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-semibold px-2.5 py-1 rounded transition-colors cursor-pointer shrink-0"
+                            >
+                              OK
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setRenamingFolder(null)}
+                              className="text-text-secondary hover:text-text-primary text-[11px] font-semibold px-1.5 py-1 cursor-pointer shrink-0"
+                            >
+                              No
+                            </button>
+                          </div>
+                        ) : (
+                          <>
+                            <button
+                              onClick={() => toggleFolderCollapse(cat)}
+                              className="flex items-center gap-2 text-xs font-bold text-text-primary select-none flex-grow text-left"
+                            >
+                              {!isCollapsed ? <ChevronDown className="h-4 w-4 shrink-0" /> : <ChevronRight className="h-4 w-4 shrink-0" />}
+                              <Folder className="h-4 w-4 text-blue-500 shrink-0" />
+                              <span className="truncate flex-grow">{cat}</span>
+                              <span className="text-[11px] font-bold text-text-secondary bg-white/10 dark:bg-white/[0.08] px-2.5 py-0.5 rounded-full border border-white/5">{catItems.length}</span>
+                            </button>
+                            
+                            {/* Hover action buttons for Custom Folders */}
+                            <div className="opacity-0 group-hover:opacity-100 flex gap-1 items-center transition-opacity shrink-0">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setRenamingFolder(cat);
+                                  setRenameFolderValue(cat);
+                                }}
+                                className="p-1 hover:text-text-primary text-text-tertiary rounded transition-colors cursor-pointer"
+                                title="Editar nombre"
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDeleteFolder(cat);
+                                }}
+                                className="p-1 hover:text-red-500 text-text-tertiary rounded transition-colors cursor-pointer"
+                                title="Eliminar carpeta"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          </>
                         )}
                       </div>
+                      {!isCollapsed && (
+                        <div className="flex flex-col gap-2 pl-3 mt-1 border-l border-border-light/30 ml-3.5">
+                          {catItems.length === 0 ? (
+                            <div className="text-[11px] text-text-tertiary italic py-1 pl-2">
+                              Carpeta vacía (arrastra prompts aquí)
+                            </div>
+                          ) : (
+                            catItems.map(item => renderTemplateCard(item))
+                          )}
+                        </div>
+                      )}
                     </div>
-                    {item.description && (
-                      <span className="text-[10px] text-text-secondary leading-relaxed line-clamp-2">{item.description}</span>
-                    )}
-                    {isExpanded && item.text && (
-                      <pre className="text-xs font-sans text-text-secondary whitespace-pre-wrap break-all bg-surface-primary/75 p-3.5 rounded-xl border border-border-light/50 border-l-4 border-l-border-medium mt-1 max-h-36 overflow-y-auto w-full leading-relaxed select-text cursor-text">
-                        {item.text}
-                      </pre>
-                    )}
-                  </div>
-                );
-              })
-            )}
+                  );
+                })}
+              </div>)}
           </div>
 
           {/* Footer Action */}
@@ -709,7 +1120,7 @@ function SystemInstructionsSidebar({ onClose, panelWidth, isResizing, handleResi
               onClick={handleCreateNew}
               className="w-full py-2.5 rounded-xl text-xs font-bold bg-surface-tertiary text-text-primary hover:bg-surface-hover transition-all text-center border border-border-light"
             >
-              + Create new instruction
+              + Crear nueva instrucción
             </button>
           </div>
         </div>
@@ -718,12 +1129,12 @@ function SystemInstructionsSidebar({ onClose, panelWidth, isResizing, handleResi
         <div className="flex flex-col h-full min-h-0 relative">
           {/* Header */}
           <div className="flex items-center justify-between border-b border-border-light px-4 py-3.5">
-            <h2 className="text-sm font-bold text-text-primary uppercase tracking-wider">System instructions</h2>
+            <h2 className="text-sm font-bold text-text-primary uppercase tracking-wider">Instrucciones del sistema</h2>
             <button
               onClick={onClose}
               className="flex h-7 w-7 items-center justify-center rounded-lg border border-border-light text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
               aria-label="Close"
-              title="Close instructions"
+              title="Cerrar instrucciones"
             >
               <ChevronRight className="h-4 w-4" />
             </button>
@@ -741,10 +1152,10 @@ function SystemInstructionsSidebar({ onClose, panelWidth, isResizing, handleResi
                   >
                     <span className="truncate flex-grow">
                       {selectedId === 'empty' || selectedId === 'create-new'
-                        ? '+ Create new instruction'
+                        ? '+ Crear nueva instrucción'
                         : selectedId === 'custom'
-                        ? 'Custom Instructions'
-                        : instructions.find(item => item.id === selectedId)?.title || 'Untitled instruction'}
+                        ? 'Instrucciones personalizadas'
+                        : instructions.find(item => item.id === selectedId)?.title || 'Instrucción sin título'}
                     </span>
                     <ChevronDown className={`absolute right-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-text-tertiary shrink-0 transition-transform duration-200 ${isDropdownOpen ? 'rotate-180' : ''}`} />
                   </button>
@@ -756,7 +1167,7 @@ function SystemInstructionsSidebar({ onClose, panelWidth, isResizing, handleResi
                   onClick={() => setShowListView(true)}
                   className="flex h-9 w-9 items-center justify-center rounded-full border border-[#444] bg-transparent text-text-secondary hover:bg-white/[0.04] hover:text-text-primary transition-all shrink-0"
                   aria-label="View template lists with descriptions"
-                  title="View list with descriptions"
+                  title="Ver lista con descripciones"
                 >
                   <List className="h-4 w-4" />
                 </button>
@@ -783,30 +1194,36 @@ function SystemInstructionsSidebar({ onClose, panelWidth, isResizing, handleResi
                       className="w-full text-left px-3.5 py-2 text-[14px] text-text-primary hover:bg-white/[0.10] font-normal transition-colors flex items-center gap-2 rounded-md shrink-0"
                     >
                       <Plus className="h-4 w-4 text-text-tertiary shrink-0" />
-                      <span>+ Create new instruction</span>
+                      <span>+ Crear nueva instrucción</span>
                     </button>
                   </div>
 
                   {/* Scrollable list with visible scrollbar */}
                   <div className="max-h-[50vh] overflow-y-auto flex flex-col px-1.5 custom-scrollbar" style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(255, 255, 255, 0.16) transparent' }}>
-                    {instructions.map(item => {
-                      const isSelected = selectedId === item.id;
+                    {/* Uncategorized first */}
+                    {(() => {
+                      const uncategorized = instructions.filter(item => !item.category || item.category.trim() === '');
+                      if (uncategorized.length === 0) return null;
                       return (
-                        <button
-                          key={item.id}
-                          type="button"
-                          onClick={() => {
-                            setSelectedId(item.id);
-                            setIsDropdownOpen(false);
-                          }}
-                          className={`w-full text-left px-3.5 py-2 text-[14px] transition-colors truncate rounded-md shrink-0 ${
-                            isSelected 
-                              ? 'bg-white/[0.16] text-white font-semibold' 
-                              : 'text-[#ccc] hover:text-white hover:bg-white/[0.08] font-normal'
-                          }`}
-                        >
-                          {item.title || 'Untitled'}
-                        </button>
+                        <>
+                          <div className="px-3.5 py-1 text-[10px] font-bold text-text-tertiary uppercase tracking-wider bg-black/10 select-none rounded-md">
+                            Sin clasificar
+                          </div>
+                          {uncategorized.map(item => renderDropdownItem(item))}
+                        </>
+                      );
+                    })()}
+                    {/* Unique Categories */}
+                    {allFolders.map(cat => {
+                      const catItems = instructions.filter(item => item.category && item.category.trim() === cat);
+                      if (catItems.length === 0) return null;
+                      return (
+                        <React.Fragment key={cat}>
+                          <div className="px-3.5 py-1 text-[10px] font-bold text-text-tertiary uppercase tracking-wider bg-black/10 select-none rounded-md mt-1">
+                            {cat}
+                          </div>
+                          {catItems.map(item => renderDropdownItem(item))}
+                        </React.Fragment>
                       );
                     })}
                   </div>
@@ -878,14 +1295,14 @@ function SystemInstructionsSidebar({ onClose, panelWidth, isResizing, handleResi
               {/* Slide up dialog card */}
               <div className="absolute inset-x-0 bottom-0 z-50 bg-surface-primary dark:bg-[#131314] border-t border-border-light shadow-2xl p-4 flex flex-col gap-3.5 animate-slide-in-up rounded-t-xl border border-border-medium/20">
                 <div className="flex items-center justify-between border-b border-border-light pb-2">
-                  <h3 className="text-xs font-bold text-text-primary uppercase tracking-wider">Save Instruction Preset</h3>
+                  <h3 className="text-xs font-bold text-text-primary uppercase tracking-wider">Guardar Plantilla de Instrucción</h3>
                 </div>
                 
                 <div>
-                  <label className="text-[10px] font-bold text-text-tertiary uppercase tracking-wider block mb-1">Instruction Title</label>
+                  <label className="text-[10px] font-bold text-text-tertiary uppercase tracking-wider block mb-1">Título de la instrucción</label>
                   <input
                     type="text"
-                    placeholder="Untitled Prompt"
+                    placeholder="Instrucción sin título"
                     value={tempTitle}
                     onChange={handleTitleChange}
                     className="w-full px-3.5 py-2 text-xs font-semibold rounded-md border border-border-light bg-surface-secondary dark:bg-[#1a1a1c] text-text-primary focus:border-white/60 focus:outline-none focus:ring-1 focus:ring-white/60"
@@ -893,14 +1310,48 @@ function SystemInstructionsSidebar({ onClose, panelWidth, isResizing, handleResi
                 </div>
 
                 <div>
-                  <label className="text-[10px] font-bold text-text-tertiary uppercase tracking-wider block mb-1">Instruction Description</label>
+                  <label className="text-[10px] font-bold text-text-tertiary uppercase tracking-wider block mb-1">Descripción de la instrucción</label>
                   <input
                     type="text"
-                    placeholder="Brief description of this instruction's purpose"
+                    placeholder="Breve descripción del propósito de la instrucción"
                     value={tempDescription}
                     onChange={handleDescriptionChange}
                     className="w-full px-3.5 py-2 text-xs font-semibold rounded-md border border-border-light bg-surface-secondary dark:bg-[#1a1a1c] text-text-primary focus:border-white/60 focus:outline-none focus:ring-1 focus:ring-white/60"
                   />
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-bold text-text-tertiary uppercase tracking-wider block mb-1">Categoría / Carpeta</label>
+                  <div className="flex gap-2">
+                    <select
+                      value={tempCategorySelect}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setTempCategorySelect(val);
+                        if (val !== 'new') {
+                          setTempCategory(val);
+                        } else {
+                          setTempCategory('');
+                        }
+                      }}
+                      className="bg-surface-secondary text-text-primary text-xs rounded-md border border-border-light px-2.5 py-1.5 focus:border-white/60 focus:outline-none"
+                    >
+                      <option value="">Sin carpeta</option>
+                      {allFolders.map(cat => (
+                        <option key={cat} value={cat}>{cat}</option>
+                      ))}
+                      <option value="new">+ Crear nueva carpeta...</option>
+                    </select>
+                    {(tempCategorySelect === 'new' || tempCategorySelect === '') && (
+                      <input
+                        type="text"
+                        placeholder="Nombre de la carpeta"
+                        value={tempCategory}
+                        onChange={(e) => setTempCategory(e.target.value)}
+                        className="flex-grow px-3.5 py-2 text-xs font-semibold rounded-md border border-border-light bg-surface-secondary dark:bg-[#1a1a1c] text-text-primary focus:border-white/60 focus:outline-none focus:ring-1 focus:ring-white/60"
+                      />
+                    )}
+                  </div>
                 </div>
 
                 <div className="flex gap-2.5 mt-2">
@@ -909,14 +1360,14 @@ function SystemInstructionsSidebar({ onClose, panelWidth, isResizing, handleResi
                     onClick={() => setShowSaveMetadata(false)}
                     className="flex-1 py-2 rounded-md text-xs font-bold border border-border-light bg-surface-secondary text-text-secondary hover:bg-surface-hover transition-all"
                   >
-                    Close
+                    Cerrar
                   </button>
                   <button
                     type="button"
                     onClick={handleSavePreset}
                     className="flex-1 py-2 rounded-md text-xs font-bold bg-blue-600 text-white hover:bg-blue-700 transition-all shadow-md shadow-blue-500/20"
                   >
-                    Save Preset
+                    Guardar
                   </button>
                 </div>
               </div>
@@ -934,22 +1385,22 @@ function SystemInstructionsSidebar({ onClose, panelWidth, isResizing, handleResi
           />
           <div className="fixed inset-0 z-[10000] flex items-center justify-center p-6">
             <div className="bg-surface-primary rounded-2xl shadow-2xl p-6 max-w-xs w-full border border-border-medium animate-slide-in-up">
-              <h3 className="text-sm font-bold text-text-primary mb-1.5">Delete system instruction?</h3>
-              <p className="text-xs text-text-secondary mb-5">This action cannot be undone.</p>
+              <h3 className="text-sm font-bold text-text-primary mb-1.5">¿Eliminar instrucción del sistema?</h3>
+              <p className="text-xs text-text-secondary mb-5">Esta acción no se puede deshacer.</p>
               <div className="flex justify-end gap-2.5">
                 <button
                   type="button"
                   onClick={() => setConfirmDeleteId(null)}
                   className="px-4 py-2 rounded-xl text-xs font-semibold text-text-secondary hover:bg-surface-hover transition-all"
                 >
-                  Cancel
+                  Cancelar
                 </button>
                 <button
                   type="button"
                   onClick={handleConfirmDelete}
                   className="px-4 py-2 rounded-xl text-xs font-bold bg-surface-tertiary text-text-primary hover:bg-surface-hover transition-all border border-border-light"
                 >
-                  Delete
+                  Eliminar
                 </button>
               </div>
             </div>

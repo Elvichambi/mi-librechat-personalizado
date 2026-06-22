@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import { useRecoilValue } from 'recoil';
 import keyBy from 'lodash/keyBy';
-import { RotateCcw } from 'lucide-react';
+import { RotateCcw, Trash2 } from 'lucide-react';
 import {
   excludedKeys,
   paramSettings,
@@ -132,6 +132,101 @@ export default function Parameters() {
     });
   }, [setConversation]);
 
+  const extractParamValues = useCallback((
+    convo: any,
+    defs: SettingDefinition[]
+  ): Record<string, unknown> => {
+    const extracted: Record<string, unknown> = {};
+    if (!convo || !defs) {
+      return extracted;
+    }
+    defs.forEach((param) => {
+      if (param && param.key && convo[param.key] !== undefined) {
+        extracted[param.key] = convo[param.key];
+      }
+    });
+    return extracted;
+  }, []);
+
+  const [savedConfigs, setSavedConfigs] = useState<Array<{ id: string; name: string; params: Record<string, any> }>>([]);
+  const [selectedConfigId, setSelectedConfigId] = useState<string>('');
+  const [showSaveInput, setShowSaveInput] = useState(false);
+  const [presetNameInput, setPresetNameInput] = useState('');
+
+  const configKey = useMemo(() => `storylab_configs:${provider}:${model}`, [provider, model]);
+
+  useEffect(() => {
+    if (!provider || !model) {
+      setSavedConfigs([]);
+      setSelectedConfigId('');
+      return;
+    }
+    try {
+      const saved = localStorage.getItem(configKey);
+      setSavedConfigs(saved ? JSON.parse(saved) : []);
+      setSelectedConfigId('');
+    } catch {
+      setSavedConfigs([]);
+      setSelectedConfigId('');
+    }
+  }, [configKey, provider, model]);
+
+  const handleSaveConfig = useCallback(() => {
+    setShowSaveInput(prev => !prev);
+    setPresetNameInput('');
+  }, []);
+
+  const handleConfirmSaveConfig = useCallback(() => {
+    if (!conversation || !parameters) return;
+    
+    const cleanName = presetNameInput.trim();
+    const configName = cleanName || `Configuración ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+    
+    const currentParams = extractParamValues(conversation, parameters);
+    
+    const newConfig = {
+      id: Date.now().toString(),
+      name: configName,
+      params: currentParams,
+    };
+    
+    const updated = [...savedConfigs, newConfig];
+    setSavedConfigs(updated);
+    localStorage.setItem(configKey, JSON.stringify(updated));
+    setSelectedConfigId(newConfig.id);
+    setShowSaveInput(false);
+    setPresetNameInput('');
+  }, [conversation, parameters, savedConfigs, configKey, extractParamValues, presetNameInput]);
+
+  const handleLoadConfig = useCallback((id: string) => {
+    setSelectedConfigId(id);
+    if (!id) {
+      resetParameters();
+      return;
+    }
+    const found = savedConfigs.find(cfg => cfg.id === id);
+    if (found) {
+      setConversation((prev) => {
+        if (!prev) return prev;
+        const cleanConvo = { ...prev };
+        parameters.forEach((p) => {
+          if (p && p.key) {
+            delete cleanConvo[p.key];
+          }
+        });
+        return { ...cleanConvo, ...found.params };
+      });
+    }
+  }, [savedConfigs, resetParameters, setConversation, parameters]);
+
+  const handleDeleteConfig = useCallback(() => {
+    if (!selectedConfigId) return;
+    const updated = savedConfigs.filter(cfg => cfg.id !== selectedConfigId);
+    setSavedConfigs(updated);
+    localStorage.setItem(configKey, JSON.stringify(updated));
+    setSelectedConfigId('');
+  }, [selectedConfigId, savedConfigs, configKey]);
+
   const openDialog = useCallback(() => {
     const newPreset = tConvoUpdateSchema.parse({
       ...conversation,
@@ -146,7 +241,77 @@ export default function Parameters() {
 
   return (
     <div className="h-auto max-w-full px-3.5 pb-4 pt-2">
-      <div className={storyLabUI ? "flex flex-col gap-5.5" : "grid grid-cols-2 gap-4"}>
+      {storyLabUI && (
+        <div className="flex flex-col gap-2 mb-4 pb-3 border-b border-border-light/30">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex-grow min-w-0">
+              <select
+                value={selectedConfigId}
+                onChange={(e) => handleLoadConfig(e.target.value)}
+                className="w-full bg-surface-secondary text-text-primary text-xs rounded-lg border border-border-light px-2.5 py-1.5 focus:border-blue-500 focus:outline-none"
+              >
+                <option value="">Configuraciones anteriores...</option>
+                {savedConfigs.map((cfg) => (
+                  <option key={cfg.id} value={cfg.id}>
+                    {cfg.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex gap-1.5 shrink-0 items-center">
+              <button
+                type="button"
+                onClick={handleSaveConfig}
+                className={`bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors ${showSaveInput ? 'bg-blue-800' : ''}`}
+              >
+                Guardar Parámetros
+              </button>
+              {selectedConfigId && (
+                <button
+                  type="button"
+                  onClick={handleDeleteConfig}
+                  className="p-1.5 text-text-secondary hover:text-red-500 rounded-lg hover:bg-surface-hover transition-all"
+                  title="Eliminar configuración"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+          </div>
+
+          {showSaveInput && (
+            <div className="flex gap-2 items-center bg-surface-secondary p-2 rounded-lg border border-border-light animate-fade-in">
+              <input
+                type="text"
+                placeholder="Nombre de la configuración..."
+                value={presetNameInput}
+                onChange={(e) => setPresetNameInput(e.target.value)}
+                className="flex-grow bg-surface-primary border border-border-light text-xs rounded-lg px-2 py-1 text-text-primary focus:border-blue-500 focus:outline-none"
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleConfirmSaveConfig();
+                  if (e.key === 'Escape') { setShowSaveInput(false); setPresetNameInput(''); }
+                }}
+              />
+              <button
+                type="button"
+                onClick={handleConfirmSaveConfig}
+                className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-3 py-1 rounded transition-colors cursor-pointer shrink-0"
+              >
+                OK
+              </button>
+              <button
+                type="button"
+                onClick={() => { setShowSaveInput(false); setPresetNameInput(''); }}
+                className="text-text-secondary hover:text-text-primary text-xs font-semibold px-2 py-1 cursor-pointer shrink-0"
+              >
+                No
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+      <div className={storyLabUI ? "flex flex-col gap-4" : "grid grid-cols-2 gap-4"}>
         {' '}
         {/* This is the parent element containing all settings */}
         {/* Below is an example of an applied dynamic setting, each be contained by a div with the column span specified */}
@@ -173,17 +338,34 @@ export default function Parameters() {
               rest.options = bedrockRegions;
             }
 
+            if (storyLabUI) {
+              return (
+                <div 
+                  key={key} 
+                  className="pb-4.5 border-b border-[#ffffff0a] last:border-b-0"
+                >
+                  <Component
+                    settingKey={key}
+                    defaultValue={defaultValue}
+                    {...rest}
+                    setOption={setOption}
+                    conversation={conversation}
+                  />
+                </div>
+              );
+            }
+
             return (
-            <Component
-              key={key}
-              settingKey={key}
-              defaultValue={defaultValue}
-              {...rest}
-              setOption={setOption}
-              conversation={conversation}
-            />
-          );
-        })}
+              <Component
+                key={key}
+                settingKey={key}
+                defaultValue={defaultValue}
+                {...rest}
+                setOption={setOption}
+                conversation={conversation}
+              />
+            );
+          })}
       </div>
       <div className="mt-4 flex justify-center">
         <button
