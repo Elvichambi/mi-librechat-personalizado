@@ -5,10 +5,11 @@ import { Code, Play, RefreshCw, X } from 'lucide-react';
 import { useSetRecoilState, useResetRecoilState } from 'recoil';
 import { Button, Spinner, useMediaQuery, Radio } from '@librechat/client';
 import type { SandpackPreviewRef } from '@codesandbox/sandpack-react';
-import CopyButton from '~/components/Messages/Content/CopyButton';
 import { useShareContext, useMutationState } from '~/Providers';
 import useArtifacts from '~/hooks/Artifacts/useArtifacts';
+import ArtifactCopyMenu from './ArtifactCopyMenu';
 import DownloadArtifact from './DownloadArtifact';
+import AnnotationsPanel from './AnnotationsPanel';
 import ArtifactVersion from './ArtifactVersion';
 import ArtifactTabs from './ArtifactTabs';
 import { useLocalize } from '~/hooks';
@@ -293,7 +294,7 @@ export default function Artifacts() {
                   }}
                 />
               )}
-              <CopyButton isCopied={isCopied} iconOnly onClick={handleCopyArtifact} />
+              <ArtifactCopyMenu content={currentArtifact?.content ?? ''} />
               <DownloadArtifact artifact={currentArtifact} />
               <Button
                 size="icon"
@@ -334,6 +335,8 @@ export default function Artifacts() {
               </div>
             </div>
           </div>
+
+          <AnnotationsPanel artifact={currentArtifact} />
 
           {isMobile && (
             <div className="flex-shrink-0 border-t border-border-light bg-surface-primary-alt p-2">

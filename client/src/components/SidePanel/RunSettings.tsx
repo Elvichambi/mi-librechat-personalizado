@@ -23,9 +23,11 @@ interface ModelCardProps {
   onSelect: () => void;
   favoriteClick: (e: React.MouseEvent) => void;
   isFavorite: boolean;
+  /** Compact render used on the Favoritos tab — small row, no description / context / cutoff. */
+  compact?: boolean;
 }
 
-function ModelCard({ modelId, endpoint, isSelected, onSelect, favoriteClick, isFavorite }: ModelCardProps) {
+function ModelCard({ modelId, endpoint, isSelected, onSelect, favoriteClick, isFavorite, compact = false }: ModelCardProps) {
   const { endpointRequiresUserKey, handleOpenKeyDialog } = useModelSelectorContext();
   const requiresKey = endpointRequiresUserKey(endpoint.value);
   const { checkExpiry } = useUserKey(endpoint.value);
@@ -47,6 +49,54 @@ function ModelCard({ modelId, endpoint, isSelected, onSelect, favoriteClick, isF
     e.stopPropagation();
     handleOpenKeyDialog(endpoint.value as EModelEndpoint, e);
   };
+
+  if (compact) {
+    return (
+      <div
+        onClick={onSelect}
+        className={`flex items-center gap-2 rounded-lg border px-2.5 py-2 transition-all duration-150 cursor-pointer ${
+          isSelected
+            ? 'border-blue-500 bg-blue-500/5'
+            : 'border-border-light bg-surface-secondary hover:bg-surface-hover hover:border-border-medium'
+        }`}
+      >
+        {endpoint.icon && React.isValidElement(endpoint.icon) && (
+          <div className="h-5 w-5 shrink-0 flex items-center justify-center overflow-hidden rounded-full">
+            {endpoint.icon}
+          </div>
+        )}
+        <div className="flex flex-col min-w-0 flex-1">
+          <span className="text-[13px] font-medium text-text-primary truncate">{modelId}</span>
+          <span className="text-[10px] text-text-tertiary font-mono truncate">{endpoint.value}</span>
+        </div>
+        {isSelected && (
+          <CheckCircle className="h-3.5 w-3.5 text-blue-500 shrink-0" />
+        )}
+        {requiresKey && (
+          <button
+            onClick={handleKeyBadgeClick}
+            className={`flex items-center justify-center h-5 w-5 rounded text-[9px] font-bold border transition-colors shrink-0 ${
+              hasKey
+                ? 'border-green-500/30 bg-green-500/10 text-green-600 dark:text-green-400'
+                : 'border-red-500/30 bg-red-500/10 text-red-600 dark:text-red-400'
+            }`}
+            title={hasKey ? 'API key set' : 'Set API key'}
+          >
+            <Key className="h-2.5 w-2.5" />
+          </button>
+        )}
+        <button
+          onClick={favoriteClick}
+          className={`p-1 rounded shrink-0 hover:bg-surface-hover transition-colors ${
+            isFavorite ? 'text-amber-500' : 'text-text-tertiary hover:text-text-secondary'
+          }`}
+          title={isFavorite ? 'Quitar de favoritos' : 'Añadir a favoritos'}
+        >
+          <Star className={`h-3.5 w-3.5 ${isFavorite ? 'fill-current' : ''}`} />
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -286,6 +336,7 @@ function ModelSelectionSidebar({ onClose, panelWidth, isResizing, handleResizeSt
               modelId={card.modelId}
               endpoint={card.endpoint}
               isSelected={card.isSelected}
+              compact={selectedTab === 'favorites'}
               onSelect={() => {
                 handleSelectModel(card.endpoint, card.modelId);
                 onClose();
@@ -1680,13 +1731,13 @@ export default function RunSettings() {
   const { data: startupConfig } = useGetStartupConfig();
   const [collapsed, setCollapsed] = useRecoilState(store.runSettingsCollapsed);
 
-  // Collapsed: show a thin strip with expand button
+  // Collapsed: no visible bar — just a discreet chevron button pinned to the top edge.
   if (collapsed) {
     return (
-      <div className="flex h-full w-10 flex-col items-center border-l border-border-light bg-surface-primary pt-3">
+      <div className="flex h-full w-7 flex-col items-center bg-transparent pt-3">
         <button
           onClick={() => setCollapsed(false)}
-          className="flex h-8 w-8 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
+          className="flex h-7 w-7 items-center justify-center rounded-md text-text-secondary opacity-40 transition-all hover:bg-surface-hover hover:text-text-primary hover:opacity-100"
           aria-label="Expand settings"
           title="Expand settings"
         >
@@ -1696,6 +1747,8 @@ export default function RunSettings() {
     );
   }
 
+  // Expanded: RunSettingsContent manages its own width + drag-to-resize handle, so we
+  // render it bare. Just placed at the right edge of the layout (handled by ChatView).
   return (
     <ModelSelectorChatProvider>
       <ModelSelectorProvider startupConfig={startupConfig}>

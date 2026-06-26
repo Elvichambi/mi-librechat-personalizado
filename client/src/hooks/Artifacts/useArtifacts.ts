@@ -93,14 +93,8 @@ export default function useArtifacts() {
     setCurrentArtifactId(latestArtifactId);
     lastContentRef.current = latestArtifact?.content ?? null;
 
-    // Only switch to code tab if we haven't detected an enclosed artifact yet
-    if (!hasEnclosedArtifactRef.current && !hasAutoSwitchedToCodeRef.current) {
-      const artifactStartContent = latestArtifact?.content?.slice(0, 50) ?? '';
-      if (artifactStartContent.length > 0 && latestMessageText.includes(artifactStartContent)) {
-        setActiveTab('code');
-        hasAutoSwitchedToCodeRef.current = true;
-      }
-    }
+    // Auto-switch to code tab disabled: we always stay on "preview" so the user sees
+    // the artifact rendering live as it streams in, just like Claude / Open Canvas.
   }, [
     artifacts,
     isSubmitting,

@@ -7,6 +7,7 @@ import { useCodeState } from '~/Providers/EditorContext';
 import useArtifactProps from '~/hooks/Artifacts/useArtifactProps';
 import { ArtifactCodeEditor } from './ArtifactCodeEditor';
 import { useGetStartupConfig } from '~/data-provider';
+import ArtifactTextRenderer from './ArtifactTextRenderer';
 import { ArtifactPreview } from './ArtifactPreview';
 
 export default function ArtifactTabs({
@@ -32,6 +33,10 @@ export default function ArtifactTabs({
 
   const { files, fileKey, template, sharedProps } = useArtifactProps({ artifact });
 
+  const baseType = (artifact.type ?? '').split(';')[0].trim().toLowerCase();
+  const isTextType =
+    baseType === 'text/markdown' || baseType === 'text/md' || baseType === 'text/plain';
+
   return (
     <div className="flex h-full w-full flex-col">
       <Tabs.Content
@@ -48,15 +53,19 @@ export default function ArtifactTabs({
         className="h-full w-full flex-grow overflow-hidden"
         tabIndex={-1}
       >
-        <ArtifactPreview
-          files={files}
-          fileKey={fileKey}
-          template={template}
-          previewRef={previewRef}
-          sharedProps={sharedProps}
-          currentCode={currentCode}
-          startupConfig={startupConfig}
-        />
+        {isTextType ? (
+          <ArtifactTextRenderer content={currentCode ?? artifact.content ?? ''} />
+        ) : (
+          <ArtifactPreview
+            files={files}
+            fileKey={fileKey}
+            template={template}
+            previewRef={previewRef}
+            sharedProps={sharedProps}
+            currentCode={currentCode}
+            startupConfig={startupConfig}
+          />
+        )}
       </Tabs.Content>
     </div>
   );

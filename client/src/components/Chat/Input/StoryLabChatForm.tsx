@@ -22,6 +22,7 @@ import {
   useFocusChatEffect,
 } from '~/hooks';
 import { mainTextareaId } from '~/common';
+import StoryLabArtifactsToggle from './StoryLabArtifactsToggle';
 import AttachFileChat from './Files/AttachFileChat';
 import FileFormChat from './Files/FileFormChat';
 import FrozenBanner from './FrozenBanner';
@@ -322,7 +323,12 @@ const ChatForm = memo(function ChatForm({
                   setFilesLoading={setFilesLoading}
                 />
               </div>
-              {/* BadgeRow Removed for StoryLab AI Studio Layout */}
+              {/* BadgeRow removed for StoryLab; lightweight Artifacts toggle restored */}
+              {endpoint && !disableInputs && (
+                <div className="flex items-center">
+                  <StoryLabArtifactsToggle conversationId={conversationId} />
+                </div>
+              )}
               <div className="mx-auto flex" />
               {SpeechToText && (
                 <AudioRecorder

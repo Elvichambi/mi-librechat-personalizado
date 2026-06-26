@@ -82,36 +82,40 @@ function ChatView({ index = 0 }: { index?: number }) {
     <ChatFormProvider {...methods}>
       <ChatContext.Provider value={chatHelpers}>
         <AddedChatContext.Provider value={addedChatHelpers}>
-          <Presentation>
-            <div className="flex w-full h-full">
-              <div className="relative flex h-full w-full flex-col flex-1">
-                <Header />
-                <>
-                  <div
-                    className={cn(
-                      'flex flex-col',
-                      isLandingPage
-                        ? 'flex-1 items-center justify-end sm:justify-center'
-                        : 'h-full overflow-y-auto',
-                    )}
-                  >
-                    {content}
-                    <div
-                      className={cn(
-                        'w-full',
-                        isLandingPage && 'max-w-3xl transition-all duration-200 xl:max-w-4xl',
-                      )}
-                    >
-                      <ChatForm index={index} />
-                      {isLandingPage ? <ConversationStarters /> : <Footer />}
-                    </div>
+          <div className="flex h-full w-full">
+            <div className="flex min-w-0 flex-1">
+              <Presentation>
+                <div className="flex h-full w-full">
+                  <div className="relative flex h-full w-full flex-1 flex-col">
+                    <Header />
+                    <>
+                      <div
+                        className={cn(
+                          'flex flex-col',
+                          isLandingPage
+                            ? 'flex-1 items-center justify-end sm:justify-center'
+                            : 'h-full overflow-y-auto',
+                        )}
+                      >
+                        {content}
+                        <div
+                          className={cn(
+                            'w-full',
+                            isLandingPage && 'max-w-3xl transition-all duration-200 xl:max-w-4xl',
+                          )}
+                        >
+                          <ChatForm index={index} />
+                          {isLandingPage ? <ConversationStarters /> : <Footer />}
+                        </div>
+                      </div>
+                      {isLandingPage && <Footer />}
+                    </>
                   </div>
-                  {isLandingPage && <Footer />}
-                </>
-              </div>
-              <RunSettings />
+                </div>
+              </Presentation>
             </div>
-          </Presentation>
+            <RunSettings />
+          </div>
         </AddedChatContext.Provider>
       </ChatContext.Provider>
     </ChatFormProvider>

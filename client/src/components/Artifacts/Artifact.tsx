@@ -11,7 +11,15 @@ import { artifactsState } from '~/store/artifacts';
 import ArtifactButton from './ArtifactButton';
 
 export const artifactPlugin: Pluggable = () => {
-  return (tree) => {
+  return (tree, file) => {
+    /** Source markdown — used to recover the artifact's RAW content. Without this, when
+     *  a model (e.g. Gemini) emits the directive WITHOUT wrapping the body in triple
+     *  backticks, remark parses the body's prose into child nodes and `extractContent`
+     *  later concatenates their text without separators ("HeadingTextoH2"). Reading the
+     *  raw slice between `:::artifact{...}\n` and `\n:::` preserves all formatting and
+     *  works for both with-backticks and without-backticks styles. */
+    const source = typeof file?.value === 'string' ? file.value : null;
+
     visit(tree, ['textDirective', 'leafDirective', 'containerDirective'], (node, index, parent) => {
       if (node.type === 'textDirective') {
         const replacementText = `:${node.name}`;
@@ -25,6 +33,22 @@ export const artifactPlugin: Pluggable = () => {
       if (node.name !== 'artifact') {
         return;
       }
+
+      if (source && node.position?.start?.offset != null && node.position?.end?.offset != null) {
+        const raw = source.slice(node.position.start.offset, node.position.end.offset);
+        const match = raw.match(/^:::artifact[^\n]*\n([\s\S]*?)\n:::\s*$/);
+        if (match) {
+          let content = match[1];
+          const fenceMatch = content.match(/^```[\w-]*\n([\s\S]*?)\n```\s*$/);
+          if (fenceMatch) {
+            content = fenceMatch[1];
+          }
+          // Replace parsed sub-tree with a single raw-text child so extractContent
+          // returns the original markdown verbatim (preserving newlines).
+          (node as { children?: unknown }).children = [{ type: 'text', value: content }];
+        }
+      }
+
       node.data = {
         hName: node.name,
         hProperties: node.attributes,

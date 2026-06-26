@@ -2992,3 +2992,23 @@ html {
   background: rgba(255, 255, 255, 0.3);
 }
 
+/* Annotation locate-flash: pulses an amber ring on the targeted block in the artifact. */
+@keyframes artifactFlash {
+  0%, 100% {
+    background-color: transparent;
+    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0);
+  }
+  20% {
+    background-color: rgba(245, 158, 11, 0.18);
+    box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.45);
+  }
+  60% {
+    background-color: rgba(245, 158, 11, 0.10);
+    box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.25);
+  }
+}
+.artifact-flash {
+  animation: artifactFlash 1.6s ease-out;
+  border-radius: 6px;
+}
+
