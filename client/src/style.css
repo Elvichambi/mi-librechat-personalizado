@@ -3012,3 +3012,40 @@ html {
   border-radius: 6px;
 }
 
+/* Comment button stacking: when a list item directly contains a paragraph,
+ * a nested list, or another list item, hide its OWN comment button so only
+ * the innermost (leaf) block keeps a single button. Prevents the two
+ * overlapping buttons the user saw on indented sub-items. */
+.prose li:has(> p) > .artifact-block-btn,
+.prose li:has(> ul) > .artifact-block-btn,
+.prose li:has(> ol) > .artifact-block-btn {
+  display: none;
+}
+
+/* Artifact text renderer — list indentation.
+ *
+ * The shared `.prose ul/ol { padding-left: 1em }` (used by chat) is too tight
+ * for the document-style artifact view: with `list-style-position: outside`
+ * the bullet consumes most of that 1em, so NESTED lists barely move and look
+ * flat — even though the HTML is correctly nested. The old Sandpack-iframe
+ * renderer used the browser default (~40px) which is why nesting "used to
+ * look right". Scope a generous, clearly-staircased indent to the artifact
+ * renderer only (`.artifact-prose`, set in ArtifactTextRenderer) so chat
+ * spacing is untouched. Specificity (0,2,1) beats every existing list rule. */
+.prose.artifact-prose ul,
+.prose.artifact-prose ol {
+  padding-left: 1.6em;
+  margin-top: 0.5em;
+  margin-bottom: 0.5em;
+}
+.prose.artifact-prose li {
+  margin-top: 0.2em;
+  margin-bottom: 0.2em;
+}
+/* Nested lists get a touch more breathing room above/below the parent item. */
+.prose.artifact-prose li > ul,
+.prose.artifact-prose li > ol {
+  margin-top: 0.2em;
+  margin-bottom: 0.2em;
+}
+

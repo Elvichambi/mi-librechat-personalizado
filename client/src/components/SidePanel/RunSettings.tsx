@@ -15,6 +15,7 @@ import useUserKey from '~/hooks/Input/useUserKey';
 import DialogManager from '../Chat/Menus/Endpoints/DialogManager';
 import { getModelInfo } from '~/utils/modelInfo';
 import { EModelEndpoint } from 'librechat-data-provider';
+import { isStoryLabEditorPrompt } from '~/utils/storyLabEditorPrompt';
 
 interface ModelCardProps {
   modelId: string;
@@ -579,12 +580,26 @@ function SystemInstructionsSidebar({ onClose, panelWidth, isResizing, handleResi
 
   // Active selected ID in templates dropdown (initializes as 'empty' so it starts empty/blank by default)
   const [selectedId, setSelectedId] = useState<string>(() => {
+    if (isStoryLabEditorPrompt(systemText)) {
+      return 'storylab-editor';
+    }
     if (!systemText) {
       return 'empty';
     }
     const found = instructions.find(item => item.text === systemText);
     return found ? found.id : 'custom';
   });
+
+  // Keep selectedId in sync when the system prompt is changed from outside
+  // (e.g. the Artefactos toggle injecting / clearing the editor prompt).
+  useEffect(() => {
+    const isEditor = isStoryLabEditorPrompt(systemText);
+    if (isEditor && selectedId !== 'storylab-editor') {
+      setSelectedId('storylab-editor');
+    } else if (!isEditor && selectedId === 'storylab-editor') {
+      setSelectedId(systemText ? 'custom' : 'empty');
+    }
+  }, [systemText, selectedId]);
 
   // Local draft inputs
   const [tempTitle, setTempTitle] = useState('');
@@ -598,7 +613,18 @@ function SystemInstructionsSidebar({ onClose, panelWidth, isResizing, handleResi
   // AND sync the prompt to the active conversation so the chat actually uses it
   useEffect(() => {
     userEditedTitleRef.current = false; // Reset on programmatic changes
-    if (selectedId === 'custom') {
+    if (selectedId === 'storylab-editor') {
+      // StoryLab editor prompt — managed by the Artefactos toggle. Keep the
+      // textarea visually empty so the user doesn't see the long prompt; the
+      // actual promptPrefix/system on the conversation stays untouched. If the
+      // user types anything here, handleTextChange overwrites our prompt and
+      // they're back in "custom" territory.
+      setTempTitle('');
+      setTempDescription('');
+      setTempText('');
+      setTempCategory('');
+      setTempCategorySelect('');
+    } else if (selectedId === 'custom') {
       setTempTitle('Custom Instructions');
       setTempDescription('');
       setTempText(systemText);
@@ -1321,7 +1347,11 @@ function SystemInstructionsSidebar({ onClose, panelWidth, isResizing, handleResi
             <div className="flex-grow flex flex-col gap-1.5 min-h-0">
               <textarea
                 className="w-full flex-grow resize-none rounded-md border border-border-medium bg-surface-secondary dark:bg-[#131314] p-3.5 text-[15px] text-text-primary leading-relaxed focus:border-white/60 focus:outline-none focus:ring-1 focus:ring-white/60"
-                placeholder="Optional tone and style instructions for the model"
+                placeholder={
+                  selectedId === 'storylab-editor'
+                    ? '✏️ Modo Editor activo (gestionado por el toggle Artefactos). Escribe aquí para sobrescribir con tus propias instrucciones.'
+                    : 'Optional tone and style instructions for the model'
+                }
                 value={tempText}
                 onChange={handleTextChange}
                 autoFocus

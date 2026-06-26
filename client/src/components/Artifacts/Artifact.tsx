@@ -34,24 +34,40 @@ export const artifactPlugin: Pluggable = () => {
         return;
       }
 
+      let rawContent: string | undefined;
       if (source && node.position?.start?.offset != null && node.position?.end?.offset != null) {
         const raw = source.slice(node.position.start.offset, node.position.end.offset);
         const match = raw.match(/^:::artifact[^\n]*\n([\s\S]*?)\n:::\s*$/);
         if (match) {
           let content = match[1];
-          const fenceMatch = content.match(/^```[\w-]*\n([\s\S]*?)\n```\s*$/);
+          // Strip the optional code-fence wrapper. Tolerances that matter for
+          // real model output:
+          //  - 3+ backticks OR tildes (`\1` backreference matches the same
+          //    opener at the close). DeepSeek wraps the body in FOUR backticks
+          //    when the body itself contains a ``` block; a 3-only regex left
+          //    the outer ```` intact and the whole artifact rendered as one
+          //    giant code block.
+          //  - a language tag, trailing spaces, blank lines, and CRLF.
+          const fenceMatch = content.match(
+            /^\s*(`{3,}|~{3,})[\w-]*[ \t]*\r?\n([\s\S]*?)\r?\n[ \t]*\1[ \t]*\s*$/,
+          );
           if (fenceMatch) {
-            content = fenceMatch[1];
+            content = fenceMatch[2];
           }
           // Replace parsed sub-tree with a single raw-text child so extractContent
           // returns the original markdown verbatim (preserving newlines).
           (node as { children?: unknown }).children = [{ type: 'text', value: content }];
+          rawContent = content;
         }
       }
 
       node.data = {
         hName: node.name,
-        hProperties: node.attributes,
+        // `rawContent` carries the verbatim slice as a component PROP. react-markdown
+        // strips per-line leading whitespace from rendered text children, which
+        // flattened nested lists in the artifact (props.children lost the indent).
+        // Reading from this prop instead preserves the exact indentation.
+        hProperties: rawContent != null ? { ...node.attributes, rawContent } : node.attributes,
         ...node.data,
       };
       return node;
@@ -69,6 +85,7 @@ export function Artifact({
 }: Artifact & {
   children: React.ReactNode | { props: { children: React.ReactNode } };
   node: unknown;
+  rawContent?: string;
 }) {
   const location = useLocation();
   const { messageId } = useMessageContext();
@@ -85,7 +102,11 @@ export function Artifact({
   );
 
   const updateArtifact = useCallback(() => {
-    const content = extractContent(props.children);
+    // Prefer the verbatim slice (props.rawContent) over extractContent(children):
+    // react-markdown strips per-line leading whitespace from rendered text, which
+    // flattens nested lists. During streaming (directive not yet closed) rawContent
+    // is absent, so fall back to extractContent until the artifact completes.
+    const content = props.rawContent ?? extractContent(props.children);
     logger.log('artifacts', 'updateArtifact: content.length', content.length);
 
     const title = props.title ?? defaultTitle;
@@ -137,6 +158,7 @@ export function Artifact({
     props.title,
     setArtifacts,
     props.children,
+    props.rawContent,
     props.identifier,
     messageId,
     artifactIndex,

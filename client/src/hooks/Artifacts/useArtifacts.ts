@@ -21,6 +21,43 @@ export default function useArtifacts() {
     );
   }, [artifacts]);
 
+  /** All artifact keys, grouped by `identifier`, sorted chronologically inside
+   *  each group. This is what powers the version picker — only artifacts that
+   *  share an identifier should appear as versions of the same document. */
+  const versionsByIdentifier = useMemo(() => {
+    const groups: Record<string, string[]> = {};
+    for (const key of Object.keys(artifacts ?? {})) {
+      const a = artifacts?.[key];
+      const id = a?.identifier;
+      if (!id) {
+        continue;
+      }
+      if (!groups[id]) {
+        groups[id] = [];
+      }
+      groups[id].push(key);
+    }
+    for (const id of Object.keys(groups)) {
+      groups[id].sort(
+        (a, b) =>
+          (artifacts?.[a]?.lastUpdateTime ?? 0) - (artifacts?.[b]?.lastUpdateTime ?? 0),
+      );
+    }
+    return groups;
+  }, [artifacts]);
+
+  /** Distinct documents in this conversation, ordered by the most recent
+   *  version of each. Used by the document switcher in the panel header. */
+  const orderedIdentifiers = useMemo(() => {
+    return Object.keys(versionsByIdentifier).sort((a, b) => {
+      const latestKeyA = versionsByIdentifier[a].at(-1);
+      const latestKeyB = versionsByIdentifier[b].at(-1);
+      const tA = latestKeyA ? (artifacts?.[latestKeyA]?.lastUpdateTime ?? 0) : 0;
+      const tB = latestKeyB ? (artifacts?.[latestKeyB]?.lastUpdateTime ?? 0) : 0;
+      return tA - tB;
+    });
+  }, [versionsByIdentifier, artifacts]);
+
   const prevIsSubmittingRef = useRef<boolean>(false);
   const lastContentRef = useRef<string | null>(null);
   const hasEnclosedArtifactRef = useRef<boolean>(false);
@@ -136,7 +173,17 @@ export default function useArtifacts() {
 
   const currentArtifact = currentArtifactId != null ? artifacts?.[currentArtifactId] : null;
 
-  const currentIndex = orderedArtifactIds.indexOf(currentArtifactId ?? '');
+  /** Versions belonging to the SAME document as the one currently selected. */
+  const currentVersionIds = useMemo(() => {
+    const id = currentArtifact?.identifier;
+    if (!id) {
+      return [] as string[];
+    }
+    return versionsByIdentifier[id] ?? [];
+  }, [currentArtifact?.identifier, versionsByIdentifier]);
+
+  /** Index of the current version WITHIN its own identifier's version list. */
+  const currentIndex = currentVersionIds.indexOf(currentArtifactId ?? '');
 
   return {
     activeTab,
@@ -144,6 +191,9 @@ export default function useArtifacts() {
     currentIndex,
     currentArtifact,
     orderedArtifactIds,
+    currentVersionIds,
+    orderedIdentifiers,
+    versionsByIdentifier,
     setCurrentArtifactId,
   };
 }

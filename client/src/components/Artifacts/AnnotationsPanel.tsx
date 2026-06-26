@@ -128,6 +128,8 @@ export default function AnnotationsPanel({ artifact }: { artifact: Artifact }) {
 
   const sendAll = () => {
     const title = artifact.title ?? 'sin título';
+    const identifier = artifact.identifier ?? '';
+
     let prompt = `Aplica estas correcciones al documento "${title}":\n\n`;
     pendingAnnotations.forEach((ann, index) => {
       const quote = ann.type === 'selection' ? ann.selectedText : (ann.paragraphText ?? '');
@@ -136,8 +138,23 @@ export default function AnnotationsPanel({ artifact }: { artifact: Artifact }) {
     if (generalComment.trim()) {
       prompt += `Comentario general: ${generalComment.trim()}\n\n`;
     }
-    prompt +=
-      'Reescribe el documento completo aplicando todos estos cambios y devuélvelo como el artifact actualizado.';
+
+    prompt += `IMPORTANTE — NO reescribas el documento completo. Devuelve SOLO los fragmentos que cambian usando el siguiente bloque (edición quirúrgica tipo parche):
+
+:::artifact-patch{identifier="${identifier}"}
+<<<<<<< SEARCH
+texto exacto a buscar en el documento actual
+=======
+texto nuevo que lo reemplaza
+>>>>>>> REPLACE
+:::
+
+Reglas estrictas:
+- Usa exactamente los marcadores \`<<<<<<< SEARCH\`, \`=======\` y \`>>>>>>> REPLACE\` (siete signos).
+- El texto entre SEARCH y ======= debe aparecer textualmente en el documento (sin abreviar, sin "...").
+- Puedes incluir varios bloques SEARCH/REPLACE dentro del mismo \`:::artifact-patch{...}:::\` para aplicar varios cambios.
+- Mantén el \`identifier\` igual al del artifact original: "${identifier}".
+- Antes y/o después del bloque de parche puedes añadir un comentario breve en prosa explicando qué cambiaste, pero NO incluyas el documento completo.`;
 
     submitMessage({ text: prompt });
     clearAll();

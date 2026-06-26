@@ -37,13 +37,71 @@ const CLOSED: PopoverState = {
 
 let annotationCounter = 0;
 
+const WIDE_MARKER_REGEX = /^([ \t]*)([*+-]|\d+\.)( {2,})(.*)$/;
+const FENCE_LINE_REGEX = /^\s*```/;
+/** Whitespace chars that look like a space but are NOT counted as block
+ *  indentation by CommonMark: non-breaking space (U+00A0), the unicode space
+ *  family (U+2000-U+200A), zero-width space (U+200B), narrow/medium NBSP
+ *  (U+202F/U+205F), ideographic space (U+3000). A model or copy-paste can
+ *  emit these as indentation; they look identical to a normal space in a text
+ *  editor ("looks perfect in Notepad") but leave a nested list FLAT because
+ *  the parser ignores them as indentation. */
+const LEADING_WS_REGEX = /^[\t\u00A0\u1680\u2000-\u200B\u202F\u205F\u3000 ]+/;
+const FAUX_SPACE_REGEX = /[\u00A0\u1680\u2000-\u200B\u202F\u205F\u3000]/g;
+
+/**
+ * Normalize list/indentation whitespace so CommonMark nests sub-items the way
+ * the writer intended. Per line (skipping fenced code):
+ *
+ *  1. Leading-indent repair: convert non-breaking / unicode spaces AND tabs at
+ *     the START of the line into regular spaces (tab -> 2 spaces). These look
+ *     like normal spaces in an editor but are NOT counted as block indentation
+ *     by the parser, so a nested list built with them renders FLAT. This is the
+ *     usual reason a list "looks indented in Notepad but flat when rendered."
+ *  2. Wide-marker collapse: `*   Item` (marker + 2+ spaces) -> `* Item`, so a
+ *     4-space-wide marker does not push the content column out and break the
+ *     nesting boundary for sub-items.
+ *
+ * Indentation depth is otherwise preserved, so real 2-space and 4-space
+ * nesting both keep working.
+ */
+function normalizeListSpacing(markdown: string): string {
+  const lines = markdown.split('\n');
+  let inFence = false;
+  for (let i = 0; i < lines.length; i++) {
+    if (FENCE_LINE_REGEX.test(lines[i])) {
+      inFence = !inFence;
+      continue;
+    }
+    if (inFence) {
+      continue;
+    }
+    const leadingMatch = lines[i].match(LEADING_WS_REGEX);
+    if (leadingMatch) {
+      const fixedIndent = leadingMatch[0]
+        .replace(FAUX_SPACE_REGEX, ' ')
+        .replace(/\t/g, '  ');
+      lines[i] = fixedIndent + lines[i].slice(leadingMatch[0].length);
+    }
+    const m = lines[i].match(WIDE_MARKER_REGEX);
+    if (m) {
+      const [, indent, marker, , content] = m;
+      lines[i] = `${indent}${marker} ${content}`;
+    }
+  }
+  return lines.join('\n');
+}
+
 function ArtifactTextRenderer({ content }: { content: string }) {
   const setPendingAnnotations = useSetRecoilState(pendingAnnotationsState);
   const focused = useRecoilValue(focusedAnnotationState);
   const [popover, setPopover] = useState<PopoverState>(CLOSED);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const currentContent = useMemo(() => preprocessLaTeX(content ?? ''), [content]);
+  const currentContent = useMemo(
+    () => preprocessLaTeX(normalizeListSpacing(content ?? '')),
+    [content],
+  );
 
   const rehypePlugins = useMemo(
     () => [
@@ -184,29 +242,33 @@ function ArtifactTextRenderer({ content }: { content: string }) {
             onMouseLeave={() => setHovered(false)}
           >
             {children}
-            {hovered && (
-              <button
-                type="button"
-                contentEditable={false}
-                onMouseDown={(e) => e.preventDefault()}
-                onMouseUp={(e) => e.stopPropagation()}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  const block = e.currentTarget.parentElement;
-                  if (block) {
-                    openParagraphPopover(
-                      block.innerText.trim(),
-                      e.currentTarget.getBoundingClientRect(),
-                    );
-                  }
-                }}
-                className="absolute right-1 top-1 rounded-md bg-surface-primary-alt p-1 text-text-secondary shadow-sm transition-colors hover:bg-surface-hover hover:text-text-primary"
-                title="Comentar esta parte"
-                aria-label="Comentar esta parte"
-              >
-                <MessageSquarePlus className="size-4" />
-              </button>
-            )}
+            <button
+              type="button"
+              contentEditable={false}
+              onMouseDown={(e) => e.preventDefault()}
+              onMouseUp={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                const block = e.currentTarget.parentElement;
+                if (block) {
+                  openParagraphPopover(
+                    block.innerText.trim(),
+                    e.currentTarget.getBoundingClientRect(),
+                  );
+                }
+              }}
+              data-block-btn=""
+              tabIndex={hovered ? 0 : -1}
+              aria-hidden={!hovered}
+              className={cn(
+                'artifact-block-btn absolute right-1 top-1 rounded-md bg-surface-primary-alt p-1 text-text-secondary shadow-sm transition-opacity hover:bg-surface-hover hover:text-text-primary',
+                hovered ? 'opacity-100' : 'pointer-events-none opacity-0',
+              )}
+              title="Comentar esta parte"
+              aria-label="Comentar esta parte"
+            >
+              <MessageSquarePlus className="size-4" />
+            </button>
           </Tag>
         );
       };
@@ -214,14 +276,16 @@ function ArtifactTextRenderer({ content }: { content: string }) {
       return Block;
     };
 
-    /** Hover comment button lives on prose blocks only (paragraphs + headings). Lists
-     *  and blockquotes use plain `prose` defaults so nested indentation is preserved.
-     *  Loose-list items put their text in a <p>, so this still covers most list use. */
+    /** Hover comment button lives on prose blocks (paragraphs, headings, list items).
+     *  For nested-list cases, CSS in `style.css` hides the parent <li>'s button when
+     *  it directly contains a <p> or a nested list, so only the innermost leaf
+     *  shows a single button instead of stacking them. */
     return {
       code,
       a,
       img,
       p: makeBlock('p', 'text-[15px]'),
+      li: makeBlock('li', ''),
       h1: makeBlock('h1', 'mt-[1.6em] text-3xl font-bold'),
       h2: makeBlock('h2', 'mt-[1.4em] text-2xl font-semibold'),
       h3: makeBlock('h3', 'mt-[1.2em] text-xl font-semibold'),
@@ -234,7 +298,7 @@ function ArtifactTextRenderer({ content }: { content: string }) {
   return (
     <div ref={containerRef} className="h-full w-full overflow-y-auto bg-surface-primary-alt">
       <div className="mx-auto max-w-3xl px-6 py-10 md:px-14">
-        <div className="prose dark:prose-invert max-w-none break-words text-text-primary">
+        <div className="prose artifact-prose dark:prose-invert max-w-none break-words text-text-primary">
           <CodeBlockProvider>
             <ReactMarkdown
               /** @ts-ignore */

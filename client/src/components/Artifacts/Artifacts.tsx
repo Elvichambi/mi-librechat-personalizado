@@ -1,8 +1,8 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
 import copy from 'copy-to-clipboard';
 import * as Tabs from '@radix-ui/react-tabs';
-import { Code, Play, RefreshCw, X } from 'lucide-react';
-import { useSetRecoilState, useResetRecoilState } from 'recoil';
+import { Code, Eye, RefreshCw, X } from 'lucide-react';
+import { useSetRecoilState, useResetRecoilState, useRecoilValue } from 'recoil';
 import { Button, Spinner, useMediaQuery, Radio } from '@librechat/client';
 import type { SandpackPreviewRef } from '@codesandbox/sandpack-react';
 import { useShareContext, useMutationState } from '~/Providers';
@@ -11,6 +11,7 @@ import ArtifactCopyMenu from './ArtifactCopyMenu';
 import DownloadArtifact from './DownloadArtifact';
 import AnnotationsPanel from './AnnotationsPanel';
 import ArtifactVersion from './ArtifactVersion';
+import ArtifactDocumentPicker from './ArtifactDocumentPicker';
 import ArtifactTabs from './ArtifactTabs';
 import { useLocalize } from '~/hooks';
 import { cn } from '~/utils';
@@ -37,6 +38,7 @@ export default function Artifacts() {
   const dragStartHeight = useRef(90);
   const setArtifactsVisible = useSetRecoilState(store.artifactsVisibility);
   const resetCurrentArtifactId = useResetRecoilState(store.currentArtifactId);
+  const artifactsMap = useRecoilValue(store.artifactsState);
 
   const tabOptions = [
     {
@@ -47,7 +49,7 @@ export default function Artifacts() {
     {
       value: 'preview',
       label: localize('com_ui_preview'),
-      icon: <Play className="size-4" />,
+      icon: <Eye className="size-4" />,
     },
   ];
 
@@ -85,7 +87,9 @@ export default function Artifacts() {
     setActiveTab,
     currentIndex,
     currentArtifact,
-    orderedArtifactIds,
+    currentVersionIds,
+    orderedIdentifiers,
+    versionsByIdentifier,
     setCurrentArtifactId,
   } = useArtifacts();
 
@@ -233,24 +237,47 @@ export default function Artifacts() {
               isMobile ? 'justify-center' : 'overflow-hidden',
             )}
           >
-            {!isMobile && (
-              <div
-                className={cn(
-                  'flex items-center transition-all duration-500',
-                  isVisible && !isClosing
-                    ? 'translate-x-0 opacity-100'
-                    : '-translate-x-2 opacity-0',
-                )}
-              >
-                <Radio
-                  options={tabOptions}
-                  value={activeTab}
-                  onChange={setActiveTab}
+            <div
+              className={cn(
+                'flex min-w-0 flex-1 items-center gap-1 transition-all duration-500',
+                isVisible && !isClosing
+                  ? 'translate-x-0 opacity-100'
+                  : '-translate-x-2 opacity-0',
+              )}
+            >
+              {!isMobile && (
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-9 w-9 flex-shrink-0"
+                  onClick={() => setActiveTab(activeTab === 'preview' ? 'code' : 'preview')}
                   disabled={isMutating && activeTab !== 'code'}
-                  buttonClassName="h-9 px-3 gap-1.5"
-                />
-              </div>
-            )}
+                  aria-label={
+                    activeTab === 'preview'
+                      ? localize('com_ui_code')
+                      : localize('com_ui_preview')
+                  }
+                  title={
+                    activeTab === 'preview'
+                      ? localize('com_ui_code')
+                      : localize('com_ui_preview')
+                  }
+                >
+                  {activeTab === 'preview' ? (
+                    <Code size={16} aria-hidden="true" />
+                  ) : (
+                    <Eye size={16} aria-hidden="true" />
+                  )}
+                </Button>
+              )}
+              <ArtifactDocumentPicker
+                currentArtifact={currentArtifact}
+                orderedIdentifiers={orderedIdentifiers}
+                versionsByIdentifier={versionsByIdentifier}
+                artifacts={artifactsMap}
+                onPick={(key) => setCurrentArtifactId(key)}
+              />
+            </div>
 
             <div
               className={cn(
@@ -282,12 +309,12 @@ export default function Artifacts() {
               {activeTab !== 'preview' && isMutating && (
                 <RefreshCw size={16} className="animate-spin text-text-secondary" />
               )}
-              {orderedArtifactIds.length > 1 && (
+              {currentVersionIds.length > 1 && (
                 <ArtifactVersion
                   currentIndex={currentIndex}
-                  totalVersions={orderedArtifactIds.length}
+                  totalVersions={currentVersionIds.length}
                   onVersionChange={(index) => {
-                    const target = orderedArtifactIds[index];
+                    const target = currentVersionIds[index];
                     if (target) {
                       setCurrentArtifactId(target);
                     }

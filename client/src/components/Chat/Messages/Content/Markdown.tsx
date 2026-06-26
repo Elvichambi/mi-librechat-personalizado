@@ -15,6 +15,7 @@ import {
   MCPUIResourceCarousel,
 } from '~/components/MCPUIResource';
 import { Artifact, artifactPlugin } from '~/components/Artifacts/Artifact';
+import { ArtifactPatch, artifactPatchPlugin } from '~/components/Artifacts/ArtifactPatch';
 import { ArtifactProvider, CodeBlockProvider } from '~/Providers';
 import MarkdownErrorBoundary from './MarkdownErrorBoundary';
 import { langSubset, preprocessLaTeX } from '~/utils';
@@ -58,6 +59,7 @@ const Markdown = memo(function Markdown({ content = '', isLatestMessage }: TCont
     remarkGfm,
     remarkDirective,
     artifactPlugin,
+    artifactPatchPlugin,
     [remarkMath, { singleDollarTextMath: false }],
     unicodeCitation,
     mcpUIResourcePlugin,
@@ -89,6 +91,7 @@ const Markdown = memo(function Markdown({ content = '', isLatestMessage }: TCont
                 p,
                 img,
                 artifact: Artifact,
+                'artifact-patch': ArtifactPatch,
                 citation: Citation,
                 'highlighted-text': HighlightedText,
                 'composite-citation': CompositeCitation,

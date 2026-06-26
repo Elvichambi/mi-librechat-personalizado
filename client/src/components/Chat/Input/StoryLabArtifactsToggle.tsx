@@ -4,7 +4,7 @@ import { WandSparkles } from 'lucide-react';
 import { CheckboxButton } from '@librechat/client';
 import { ArtifactModes } from 'librechat-data-provider';
 import { ephemeralAgentByConvoId } from '~/store';
-import { useLocalize } from '~/hooks';
+import { useLocalize, useStoryLabEditorPrompt } from '~/hooks';
 
 /**
  * StoryLab removed the BadgeRow, so there is no UI to enable Artifacts. This toggle
@@ -25,6 +25,8 @@ function StoryLabArtifactsToggle({ conversationId }: { conversationId: string })
       setEphemeralAgent((prev) => ({ ...(prev ?? {}), artifacts: ArtifactModes.DEFAULT }));
     }
   }, [mode, setEphemeralAgent]);
+
+  useStoryLabEditorPrompt(isEnabled);
 
   const handleToggle = useCallback(() => {
     setEphemeralAgent((prev) => ({
