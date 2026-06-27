@@ -178,3 +178,10 @@ claude-flow
 hive-mind-prompt-*.txt
 CLAUDE.md
 .gsd
+
+# StoryLab installer / updater scripts — distributed privately, never commit.
+# If you need to update them, edit locally and share via private channel.
+instalar-storylab.bat
+actualizar-storylab.bat
+instalar-storylab.rar
+*-storylab.bat

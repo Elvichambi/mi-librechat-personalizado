@@ -18,7 +18,11 @@ function StoryLabArtifactsToggle({ conversationId }: { conversationId: string })
   );
 
   const mode = ephemeralAgent?.artifacts;
-  const isEnabled = typeof mode === 'string' && mode.length > 0;
+  // Defaults ON when the atom hasn't been touched (mode === undefined). Without
+  // this, the very first click after a page refresh races the init useEffect
+  // and toggles the state opposite to what the user sees, requiring a second
+  // click to land on the intended state.
+  const isEnabled = mode === undefined ? true : typeof mode === 'string' && mode.length > 0;
 
   useEffect(() => {
     if (mode === undefined) {

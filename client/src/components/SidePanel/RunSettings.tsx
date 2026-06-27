@@ -15,7 +15,12 @@ import useUserKey from '~/hooks/Input/useUserKey';
 import DialogManager from '../Chat/Menus/Endpoints/DialogManager';
 import { getModelInfo } from '~/utils/modelInfo';
 import { EModelEndpoint } from 'librechat-data-provider';
-import { isStoryLabEditorPrompt } from '~/utils/storyLabEditorPrompt';
+import {
+  isStoryLabEditorPrompt,
+  getStoryLabEditorPrompt,
+  setStoryLabEditorPromptOverride,
+  STORYLAB_EDITOR_TEMPLATE_ID,
+} from '~/utils/storyLabEditorPrompt';
 
 interface ModelCardProps {
   modelId: string;
@@ -578,28 +583,17 @@ function SystemInstructionsSidebar({ onClose, panelWidth, isResizing, handleResi
 
   const systemText = promptPrefix || system || '';
 
-  // Active selected ID in templates dropdown (initializes as 'empty' so it starts empty/blank by default)
+  // Active selected ID in templates dropdown. The hidden editor prompt is
+  // NEVER auto-selected — when the Artefactos toggle injects it, we still
+  // show 'empty' so the user's normal workflow isn't interrupted. They reach
+  // it only by clicking inside the 📁 Oculto folder.
   const [selectedId, setSelectedId] = useState<string>(() => {
-    if (isStoryLabEditorPrompt(systemText)) {
-      return 'storylab-editor';
-    }
-    if (!systemText) {
+    if (!systemText || isStoryLabEditorPrompt(systemText)) {
       return 'empty';
     }
     const found = instructions.find(item => item.text === systemText);
     return found ? found.id : 'custom';
   });
-
-  // Keep selectedId in sync when the system prompt is changed from outside
-  // (e.g. the Artefactos toggle injecting / clearing the editor prompt).
-  useEffect(() => {
-    const isEditor = isStoryLabEditorPrompt(systemText);
-    if (isEditor && selectedId !== 'storylab-editor') {
-      setSelectedId('storylab-editor');
-    } else if (!isEditor && selectedId === 'storylab-editor') {
-      setSelectedId(systemText ? 'custom' : 'empty');
-    }
-  }, [systemText, selectedId]);
 
   // Local draft inputs
   const [tempTitle, setTempTitle] = useState('');
@@ -613,17 +607,12 @@ function SystemInstructionsSidebar({ onClose, panelWidth, isResizing, handleResi
   // AND sync the prompt to the active conversation so the chat actually uses it
   useEffect(() => {
     userEditedTitleRef.current = false; // Reset on programmatic changes
-    if (selectedId === 'storylab-editor') {
-      // StoryLab editor prompt — managed by the Artefactos toggle. Keep the
-      // textarea visually empty so the user doesn't see the long prompt; the
-      // actual promptPrefix/system on the conversation stays untouched. If the
-      // user types anything here, handleTextChange overwrites our prompt and
-      // they're back in "custom" territory.
-      setTempTitle('');
-      setTempDescription('');
-      setTempText('');
-      setTempCategory('');
-      setTempCategorySelect('');
+    if (selectedId === STORYLAB_EDITOR_TEMPLATE_ID) {
+      setTempTitle('🔒 StoryLab Editor');
+      setTempDescription('Prompt interno del modo Artefactos. Edita aquí para ajustarlo si algo falla.');
+      setTempText(getStoryLabEditorPrompt());
+      setTempCategory('__hidden__');
+      setTempCategorySelect('__hidden__');
     } else if (selectedId === 'custom') {
       setTempTitle('Custom Instructions');
       setTempDescription('');
@@ -659,6 +648,9 @@ function SystemInstructionsSidebar({ onClose, panelWidth, isResizing, handleResi
   // Uses a debounce so it doesn't fire on every keystroke
   // Only triggers when userEditedTitleRef is true (user typed it, not set by useEffect)
   useEffect(() => {
+    if (selectedId === STORYLAB_EDITOR_TEMPLATE_ID) {
+      return; // Hidden editor prompt is persisted to its own localStorage key
+    }
     if (!userEditedTitleRef.current) {
       return; // Skip if title was set programmatically (e.g. selecting a template)
     }
@@ -719,6 +711,16 @@ function SystemInstructionsSidebar({ onClose, panelWidth, isResizing, handleResi
   // Delete with confirmation - opens the confirm dialog
   const handleRequestDelete = (idToDelete?: string) => {
     const targetId = idToDelete || selectedId;
+    if (targetId === STORYLAB_EDITOR_TEMPLATE_ID) {
+      // Editor prompt isn't a real preset — pressing delete just resets the
+      // user's override back to the built-in default.
+      setStoryLabEditorPromptOverride(null);
+      const defaultPrompt = getStoryLabEditorPrompt();
+      setTempText(defaultPrompt);
+      setOption('promptPrefix')(defaultPrompt);
+      setOption('system')(defaultPrompt);
+      return;
+    }
     if (targetId === 'custom' || targetId === 'create-new' || targetId === 'empty') {
       // For drafts, just clear directly (no saved data to lose)
       setTempTitle('');
@@ -769,6 +771,14 @@ function SystemInstructionsSidebar({ onClose, panelWidth, isResizing, handleResi
   const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const val = e.target.value;
     setTempText(val);
+    if (selectedId === STORYLAB_EDITOR_TEMPLATE_ID) {
+      // Editor prompt edits are persisted as a localStorage override + applied
+      // to the active conversation right away.
+      setStoryLabEditorPromptOverride(val);
+      setOption('promptPrefix')(val);
+      setOption('system')(val);
+      return;
+    }
     // Sync in real time with LibreChat active conversation so user can test immediately
     setOption('promptPrefix')(val);
     setOption('system')(val);
@@ -1187,6 +1197,66 @@ function SystemInstructionsSidebar({ onClose, panelWidth, isResizing, handleResi
                     </div>
                   );
                 })}
+
+                {/* Oculto folder — always last, never editable/movable.
+                    Holds the StoryLab editor system prompt. The card looks like
+                    a normal template but doesn't write to the active conversation
+                    until the user explicitly clicks it. */}
+                {(() => {
+                  const isCollapsed = collapsedFolders['__hidden__'] !== undefined ? collapsedFolders['__hidden__'] : true;
+                  return (
+                    <div className="flex flex-col gap-2 rounded-lg transition-all opacity-70 hover:opacity-100">
+                      <button
+                        onClick={() => toggleFolderCollapse('__hidden__')}
+                        className="w-full flex items-center gap-2 px-3.5 py-2.5 text-xs font-bold rounded-xl border border-border-light/60 bg-surface-secondary/60 hover:bg-surface-hover text-text-secondary hover:text-text-primary hover:border-border-medium transition-all select-none text-left"
+                      >
+                        {!isCollapsed ? <ChevronDown className="h-4 w-4 shrink-0" /> : <ChevronRight className="h-4 w-4 shrink-0" />}
+                        <span className="text-xs leading-none">📁</span>
+                        <span className="flex-grow">Oculto</span>
+                        <span className="text-[11px] font-bold text-text-secondary bg-white/10 dark:bg-white/[0.08] px-2.5 py-0.5 rounded-full border border-white/5">1</span>
+                      </button>
+                      {!isCollapsed && (
+                        <div className="flex flex-col gap-2 pl-3 mt-1 border-l border-border-light/30 ml-3.5">
+                          <div
+                            className={`w-full text-left p-3.5 rounded-xl border transition-all flex flex-col gap-1.5 cursor-pointer select-none ${
+                              selectedId === STORYLAB_EDITOR_TEMPLATE_ID
+                                ? 'border-border-medium bg-surface-hover shadow-sm'
+                                : 'border-border-light bg-surface-secondary hover:bg-surface-hover hover:border-border-medium'
+                            }`}
+                            onClick={() => {
+                              setSelectedId(STORYLAB_EDITOR_TEMPLATE_ID);
+                              setShowListView(false);
+                            }}
+                          >
+                            <div className="flex items-center justify-between w-full">
+                              <span className="font-bold text-xs text-text-primary">🔒 StoryLab Editor</span>
+                              <div className="flex items-center gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleRequestDelete(STORYLAB_EDITOR_TEMPLATE_ID);
+                                  }}
+                                  className="flex h-6 w-6 items-center justify-center rounded-lg text-text-secondary hover:text-amber-500 hover:bg-amber-500/10 transition-all shrink-0 cursor-pointer"
+                                  aria-label="Restablecer prompt al valor por defecto"
+                                  title="Restablecer al valor por defecto"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                                {selectedId === STORYLAB_EDITOR_TEMPLATE_ID && (
+                                  <CheckCircle className="h-4 w-4 text-text-secondary shrink-0" />
+                                )}
+                              </div>
+                            </div>
+                            <span className="text-[10px] text-text-secondary leading-relaxed line-clamp-2">
+                              Prompt interno del modo Artefactos. Click para editarlo si quieres ajustarlo.
+                            </span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>)}
           </div>
 
@@ -1347,11 +1417,7 @@ function SystemInstructionsSidebar({ onClose, panelWidth, isResizing, handleResi
             <div className="flex-grow flex flex-col gap-1.5 min-h-0">
               <textarea
                 className="w-full flex-grow resize-none rounded-md border border-border-medium bg-surface-secondary dark:bg-[#131314] p-3.5 text-[15px] text-text-primary leading-relaxed focus:border-white/60 focus:outline-none focus:ring-1 focus:ring-white/60"
-                placeholder={
-                  selectedId === 'storylab-editor'
-                    ? '✏️ Modo Editor activo (gestionado por el toggle Artefactos). Escribe aquí para sobrescribir con tus propias instrucciones.'
-                    : 'Optional tone and style instructions for the model'
-                }
+                placeholder="Optional tone and style instructions for the model"
                 value={tempText}
                 onChange={handleTextChange}
                 autoFocus
@@ -1737,7 +1803,9 @@ function RunSettingsContent({ setCollapsed }: { setCollapsed: (val: boolean) => 
                 <ChevronRight className="h-3.5 w-3.5 text-text-tertiary group-hover:translate-x-0.5 transition-transform" />
               </div>
               <p className="text-xs text-text-secondary leading-relaxed line-clamp-3">
-                {systemText || "Optional tone and style instructions for the model"}
+                {isStoryLabEditorPrompt(systemText)
+                  ? 'Optional tone and style instructions for the model'
+                  : systemText || 'Optional tone and style instructions for the model'}
               </p>
             </div>
 

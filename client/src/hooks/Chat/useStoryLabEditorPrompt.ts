@@ -2,21 +2,23 @@ import { useEffect } from 'react';
 import { useChatContext } from '~/Providers/ChatContext';
 import useSetIndexOptions from '~/hooks/Conversations/useSetIndexOptions';
 import {
-  STORYLAB_EDITOR_PROMPT,
+  getStoryLabEditorPrompt,
   isStoryLabEditorPrompt,
 } from '~/utils/storyLabEditorPrompt';
 
 /**
  * Auto-applies the StoryLab editor system prompt to the current conversation
- * while the Artefactos toggle is ON. Stays out of the way when the user has
- * set their own custom prompt.
+ * while the Artefactos toggle is ON. The prompt content carries a leading
+ * marker so the UI can hide it from the System Instructions card / textarea —
+ * the user only sees it inside the dedicated "📁 Oculto" folder.
  *
  * Rules:
- *  - `enabled` becomes true → if prompt is empty or already ours, write ours.
- *    If it's the user's own prompt, leave it alone.
- *  - `enabled` becomes false → if prompt is ours, clear it. Otherwise leave.
- *  - We do NOT react to manual edits of the prompt mid-conversation
- *    (would fight the user). Toggling Artefactos off and on again refreshes.
+ *  - `enabled` becomes true → if the active prompt is empty or already ours,
+ *    write the (possibly user-overridden) editor prompt. If the user has set
+ *    their own prompt, leave it alone.
+ *  - `enabled` becomes false → if the active prompt is ours, clear it.
+ *  - Mid-conversation manual edits to the prompt are NOT clobbered (re-toggle
+ *    to refresh).
  */
 export default function useStoryLabEditorPrompt(enabled: boolean) {
   const { conversation } = useChatContext();
@@ -34,9 +36,10 @@ export default function useStoryLabEditorPrompt(enabled: boolean) {
 
     if (enabled) {
       if (!currentPrompt || isStoryLabEditorPrompt(currentPrompt)) {
-        if (currentPrompt !== STORYLAB_EDITOR_PROMPT) {
-          setOption('promptPrefix')(STORYLAB_EDITOR_PROMPT);
-          setOption('system')(STORYLAB_EDITOR_PROMPT);
+        const next = getStoryLabEditorPrompt();
+        if (currentPrompt !== next) {
+          setOption('promptPrefix')(next);
+          setOption('system')(next);
         }
       }
       return;
