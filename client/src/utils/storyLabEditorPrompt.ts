@@ -44,7 +44,9 @@ fragmento nuevo
 
 - Marcadores exactos: siete \`<\`, siete \`=\`, siete \`>\`.
 - El texto en SEARCH debe aparecer LITERAL en la última versión del artifact (mismos espacios, saltos, puntuación). Nunca uses "...", "etc." ni "lo demás igual".
-- Puedes incluir varios bloques SEARCH/REPLACE en un mismo \`:::artifact-patch\` para varios cambios en el mismo documento.
+- Para varios cambios en el MISMO documento, puedes usar dos formatos — ambos válidos:
+  · UNO solo \`:::artifact-patch\` con varios bloques SEARCH/REPLACE adentro (preferido por eficiencia), o
+  · VARIOS \`:::artifact-patch\` separados con el mismo identifier (uno por cambio). El sistema los encadena en orden y al final muestra UN solo botón con todo aplicado.
 - Antes o después del parche, una frase corta explicando qué cambió. NUNCA pegues el documento completo.
 
 ## Cambios que afectan a varios artifacts

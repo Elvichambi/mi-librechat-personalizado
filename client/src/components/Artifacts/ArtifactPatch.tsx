@@ -1,14 +1,14 @@
-import React, { useEffect, useCallback, useRef, useState } from 'react';
+import React, { useEffect, useCallback, useMemo, useRef, useState } from 'react';
 import throttle from 'lodash/throttle';
 import { visit } from 'unist-util-visit';
-import { useRecoilState } from 'recoil';
+import { useRecoilState, useRecoilValue } from 'recoil';
 import { useLocation } from 'react-router-dom';
 import type { Pluggable } from 'unified';
 import type { Artifact } from '~/common';
 import { useMessageContext, useArtifactContext } from '~/Providers';
 import { logger, extractContent, isArtifactRoute } from '~/utils';
-import { parsePatches, applyPatches } from '~/utils/artifactPatch';
-import { artifactsState } from '~/store/artifacts';
+import { parsePatches, applyPatches, type ArtifactPatch as ArtifactPatchOp } from '~/utils/artifactPatch';
+import { artifactsState, messagePatchesState, type PatchRecord } from '~/store/artifacts';
 import ArtifactButton from './ArtifactButton';
 
 /**
@@ -72,9 +72,11 @@ export function ArtifactPatch({ node: _node, ...props }: ArtifactPatchProps) {
   const { getNextIndex } = useArtifactContext();
   const artifactIndex = useRef(getNextIndex(false)).current;
 
-  const [allArtifacts, setArtifacts] = useRecoilState(artifactsState);
+  const allArtifacts = useRecoilValue(artifactsState);
+  const [, setArtifacts] = useRecoilState(artifactsState);
+  const [messagePatches, setMessagePatches] = useRecoilState(messagePatchesState);
   const [artifact, setArtifact] = useState<Artifact | null>(null);
-  const lastAppliedRef = useRef<string>('');
+  const lastAppliedKeyRef = useRef<string>('');
 
   const throttledUpdateRef = useRef(
     throttle((fn: () => void) => {
@@ -82,6 +84,7 @@ export function ArtifactPatch({ node: _node, ...props }: ArtifactPatchProps) {
     }, 50),
   );
 
+  /** Pre-message base: most recent non-same-message artifact with this identifier. */
   const findPreviousArtifact = useCallback(
     (identifier: string): Artifact | null => {
       if (!allArtifacts) {
@@ -105,14 +108,75 @@ export function ArtifactPatch({ node: _node, ...props }: ArtifactPatchProps) {
     [allArtifacts, messageId],
   );
 
-  const updatePatched = useCallback(() => {
+  /** Register this directive's raw body so peers in the same message can see it. */
+  useEffect(() => {
     const rawBody = props.rawContent ?? extractContent(props.children);
-    if (!rawBody || rawBody === lastAppliedRef.current) {
+    const identifier = props.identifier;
+    if (!rawBody || !messageId || !identifier) {
       return;
     }
+    setMessagePatches((prev) => {
+      const list = prev[messageId] ?? [];
+      const existingIdx = list.findIndex((p) => p.index === artifactIndex);
+      const entry: PatchRecord = {
+        index: artifactIndex,
+        body: rawBody,
+        identifier,
+        title: props.title,
+        type: props.type,
+      };
+      if (existingIdx >= 0) {
+        const existing = list[existingIdx];
+        if (
+          existing.body === rawBody &&
+          existing.identifier === identifier &&
+          existing.title === props.title &&
+          existing.type === props.type
+        ) {
+          return prev;
+        }
+        const next = list.slice();
+        next[existingIdx] = entry;
+        return { ...prev, [messageId]: next };
+      }
+      return { ...prev, [messageId]: [...list, entry] };
+    });
+  }, [
+    props.rawContent,
+    props.children,
+    props.identifier,
+    props.title,
+    props.type,
+    messageId,
+    artifactIndex,
+    setMessagePatches,
+  ]);
+
+  /** All same-identifier patches in this message, in document order. */
+  const sameIdPatches = useMemo<PatchRecord[]>(() => {
+    if (!messageId || !props.identifier) {
+      return [];
+    }
+    const list = messagePatches[messageId] ?? [];
+    return list
+      .filter((p) => p.identifier === props.identifier)
+      .slice()
+      .sort((a, b) => a.index - b.index);
+  }, [messagePatches, messageId, props.identifier]);
+
+  /** Position of THIS directive in the same-identifier chain, and whether it's the tail. */
+  const { chainPos, isTail } = useMemo(() => {
+    const pos = sameIdPatches.findIndex((p) => p.index === artifactIndex);
+    return {
+      chainPos: pos,
+      isTail: pos >= 0 && pos === sameIdPatches.length - 1,
+    };
+  }, [sameIdPatches, artifactIndex]);
+
+  /** Apply every patch from the start of the chain up to and including this one. */
+  const updatePatched = useCallback(() => {
     const identifier = props.identifier;
-    if (!identifier) {
-      logger.log('artifacts', 'artifact-patch missing identifier; skipping');
+    if (!identifier || chainPos < 0) {
       return;
     }
     const previous = findPreviousArtifact(identifier);
@@ -120,16 +184,26 @@ export function ArtifactPatch({ node: _node, ...props }: ArtifactPatchProps) {
       logger.log('artifacts', 'artifact-patch: no previous artifact found for', identifier);
       return;
     }
-    const patches = parsePatches(rawBody);
-    if (patches.length === 0) {
+    const chainUpToSelf = sameIdPatches.slice(0, chainPos + 1);
+    const flatOps: ArtifactPatchOp[] = [];
+    for (const p of chainUpToSelf) {
+      flatOps.push(...parsePatches(p.body));
+    }
+    if (flatOps.length === 0) {
       return;
     }
-    const result = applyPatches(previous.content, patches);
+
+    const fingerprint = chainUpToSelf.map((p) => `${p.index}:${p.body}`).join('|');
+    if (fingerprint === lastAppliedKeyRef.current) {
+      return;
+    }
+
+    const result = applyPatches(previous.content, flatOps);
     if (result.applied === 0) {
       logger.log('artifacts', 'artifact-patch: no patches matched', { identifier });
       return;
     }
-    lastAppliedRef.current = rawBody;
+    lastAppliedKeyRef.current = fingerprint;
 
     const title = props.title ?? previous.title ?? defaultTitle;
     const type = props.type ?? previous.type ?? defaultType;
@@ -164,11 +238,11 @@ export function ArtifactPatch({ node: _node, ...props }: ArtifactPatchProps) {
       });
     });
   }, [
-    props.children,
-    props.rawContent,
     props.identifier,
     props.title,
     props.type,
+    chainPos,
+    sameIdPatches,
     findPreviousArtifact,
     messageId,
     artifactIndex,
@@ -179,6 +253,12 @@ export function ArtifactPatch({ node: _node, ...props }: ArtifactPatchProps) {
   useEffect(() => {
     updatePatched();
   }, [updatePatched]);
+
+  // Only the last patch in the same-identifier chain renders the button —
+  // earlier ones are intermediate steps now folded into the tail's result.
+  if (!isTail) {
+    return null;
+  }
 
   return <ArtifactButton artifact={artifact} />;
 }

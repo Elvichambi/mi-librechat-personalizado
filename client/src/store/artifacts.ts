@@ -2,6 +2,28 @@ import { atom } from 'recoil';
 import { logger } from '~/utils';
 import type { Artifact } from '~/common';
 
+/**
+ * Raw `:::artifact-patch` bodies emitted within a single assistant message,
+ * keyed by messageId. Lets ArtifactPatch components chain multiple patches
+ * for the same `identifier` so each one applies on top of the previous —
+ * required when the model emits more than one `:::artifact-patch` block per
+ * message instead of bundling SEARCH/REPLACE blocks into a single directive.
+ */
+export interface PatchRecord {
+  /** Render order of this directive in the message (artifactIndex). */
+  index: number;
+  /** Raw patch body (the SEARCH/REPLACE blocks, unparsed). */
+  body: string;
+  identifier: string;
+  title?: string;
+  type?: string;
+}
+
+export const messagePatchesState = atom<Record<string, PatchRecord[]>>({
+  key: 'messagePatchesState',
+  default: {},
+});
+
 export const artifactsState = atom<Record<string, Artifact | undefined> | null>({
   key: 'artifactsState',
   default: null,
