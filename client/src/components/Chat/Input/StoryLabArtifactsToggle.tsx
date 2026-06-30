@@ -6,10 +6,14 @@ import { ArtifactModes } from 'librechat-data-provider';
 import { ephemeralAgentByConvoId } from '~/store';
 import { useLocalize, useStoryLabEditorPrompt } from '~/hooks';
 
+/** Remembers the user's last toggle choice across refreshes. Defaults OFF. */
+const ARTIFACTS_PREF_KEY = 'storylab:artifacts-enabled';
+
 /**
  * StoryLab removed the BadgeRow, so there is no UI to enable Artifacts. This toggle
- * restores that control and defaults Artifacts ON, ensuring the backend injects the
- * `:::artifact` system prompt for ephemeral (standard) StoryLab conversations.
+ * restores that control. It defaults OFF and REMEMBERS the user's last choice in
+ * localStorage, so a refresh keeps whatever state the user left it in (no more
+ * "always on after every refresh").
  */
 function StoryLabArtifactsToggle({ conversationId }: { conversationId: string }) {
   const localize = useLocalize();
@@ -18,25 +22,26 @@ function StoryLabArtifactsToggle({ conversationId }: { conversationId: string })
   );
 
   const mode = ephemeralAgent?.artifacts;
-  // Defaults ON when the atom hasn't been touched (mode === undefined). Without
-  // this, the very first click after a page refresh races the init useEffect
-  // and toggles the state opposite to what the user sees, requiring a second
-  // click to land on the intended state.
-  const isEnabled = mode === undefined ? true : typeof mode === 'string' && mode.length > 0;
+  const isEnabled = typeof mode === 'string' && mode.length > 0;
 
+  // First mount for this conversation: seed from the saved preference (default OFF).
   useEffect(() => {
-    if (mode === undefined) {
-      setEphemeralAgent((prev) => ({ ...(prev ?? {}), artifacts: ArtifactModes.DEFAULT }));
+    if (mode !== undefined) {
+      return;
     }
+    const savedOn = localStorage.getItem(ARTIFACTS_PREF_KEY) === 'true';
+    setEphemeralAgent((prev) => ({
+      ...(prev ?? {}),
+      artifacts: savedOn ? ArtifactModes.DEFAULT : '',
+    }));
   }, [mode, setEphemeralAgent]);
 
   useStoryLabEditorPrompt(isEnabled);
 
   const handleToggle = useCallback(() => {
-    setEphemeralAgent((prev) => ({
-      ...(prev ?? {}),
-      artifacts: isEnabled ? '' : ArtifactModes.DEFAULT,
-    }));
+    const next = isEnabled ? '' : ArtifactModes.DEFAULT;
+    localStorage.setItem(ARTIFACTS_PREF_KEY, String(!isEnabled));
+    setEphemeralAgent((prev) => ({ ...(prev ?? {}), artifacts: next }));
   }, [isEnabled, setEphemeralAgent]);
 
   return (

@@ -1,6 +1,7 @@
 import { useState } from 'react';
+import copy from 'copy-to-clipboard';
 import { useRecoilState, useSetRecoilState } from 'recoil';
-import { Send, Trash2, MessageSquare, ChevronDown, ChevronUp, Pencil, Locate, Check } from 'lucide-react';
+import { Send, Trash2, MessageSquare, ChevronDown, ChevronUp, Pencil, Locate, Check, Copy, ClipboardCheck } from 'lucide-react';
 import { Button } from '@librechat/client';
 import type { Artifact } from '~/common';
 import {
@@ -9,6 +10,8 @@ import {
   focusedAnnotationState,
   type Annotation,
 } from '~/store/artifacts';
+import { buildNotebookClipboard, isNotebookArtifact } from '~/utils/notebook';
+import { getNotebookInstruction, getPatchInstruction } from '~/utils/storyLabPrompts';
 import { useSubmitMessage } from '~/hooks';
 
 const truncate = (text: string, max: number) =>
@@ -56,6 +59,8 @@ function AnnotationRow({ annotation: ann, onEdit, onDelete, onLocate }: RowProps
             value={draft}
             autoFocus
             rows={1}
+            spellCheck
+            lang="es"
             onChange={(e) => setDraft(e.target.value)}
             onBlur={save}
             onKeyDown={(e) => {
@@ -101,6 +106,7 @@ export default function AnnotationsPanel({ artifact }: { artifact: Artifact }) {
   const [generalComment, setGeneralComment] = useRecoilState(generalCommentState);
   const setFocused = useSetRecoilState(focusedAnnotationState);
   const [collapsed, setCollapsed] = useState(false);
+  const [copied, setCopied] = useState(false);
   const { submitMessage } = useSubmitMessage();
 
   if (pendingAnnotations.length === 0) {
@@ -110,6 +116,17 @@ export default function AnnotationsPanel({ artifact }: { artifact: Artifact }) {
   const clearAll = () => {
     setPendingAnnotations([]);
     setGeneralComment('');
+  };
+
+  const copyForOtherAI = () => {
+    const text = buildNotebookClipboard({
+      content: artifact.content ?? '',
+      annotations: pendingAnnotations,
+      generalComment,
+    });
+    copy(text, { format: 'text/plain' });
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2500);
   };
 
   const editAnnotation = (id: string, comment: string) => {
@@ -129,6 +146,7 @@ export default function AnnotationsPanel({ artifact }: { artifact: Artifact }) {
   const sendAll = () => {
     const title = artifact.title ?? 'sin título';
     const identifier = artifact.identifier ?? '';
+    const isNotebook = isNotebookArtifact(artifact);
 
     let prompt = `Aplica estas correcciones al documento "${title}":\n\n`;
     pendingAnnotations.forEach((ann, index) => {
@@ -139,22 +157,8 @@ export default function AnnotationsPanel({ artifact }: { artifact: Artifact }) {
       prompt += `Comentario general: ${generalComment.trim()}\n\n`;
     }
 
-    prompt += `IMPORTANTE — NO reescribas el documento completo. Devuelve SOLO los fragmentos que cambian usando el siguiente bloque (edición quirúrgica tipo parche):
-
-:::artifact-patch{identifier="${identifier}"}
-<<<<<<< SEARCH
-texto exacto a buscar en el documento actual
-=======
-texto nuevo que lo reemplaza
->>>>>>> REPLACE
-:::
-
-Reglas estrictas:
-- Usa exactamente los marcadores \`<<<<<<< SEARCH\`, \`=======\` y \`>>>>>>> REPLACE\` (siete signos).
-- El texto entre SEARCH y ======= debe aparecer textualmente en el documento (sin abreviar, sin "...").
-- Puedes incluir varios bloques SEARCH/REPLACE dentro del mismo \`:::artifact-patch{...}:::\` para aplicar varios cambios.
-- Mantén el \`identifier\` igual al del artifact original: "${identifier}".
-- Antes y/o después del bloque de parche puedes añadir un comentario breve en prosa explicando qué cambiaste, pero NO incluyas el documento completo.`;
+    // Notebook → normal full-text edit (keeps the rest). Artifact → surgical patch.
+    prompt += isNotebook ? getNotebookInstruction() : getPatchInstruction(identifier);
 
     submitMessage({ text: prompt });
     clearAll();
@@ -171,25 +175,52 @@ Reglas estrictas:
           <MessageSquare className="size-4 text-amber-500" aria-hidden="true" />
           Correcciones marcadas ({pendingAnnotations.length})
         </span>
-        <span className="flex items-center gap-2">
+        <span className="flex items-center gap-2.5">
           {!collapsed && (
-            <span
-              role="button"
-              tabIndex={0}
-              onClick={(e) => {
-                e.stopPropagation();
-                clearAll();
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
+            <>
+              <span
+                role="button"
+                tabIndex={0}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  copyForOtherAI();
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.stopPropagation();
+                    copyForOtherAI();
+                  }
+                }}
+                title="Copiar el texto, tus señalizaciones y comentarios para pegarlos en otra IA"
+                className={`flex items-center gap-1 text-xs transition-colors ${
+                  copied ? 'text-green-500' : 'text-text-secondary hover:text-amber-500'
+                }`}
+              >
+                {copied ? (
+                  <ClipboardCheck className="size-3.5" aria-hidden="true" />
+                ) : (
+                  <Copy className="size-3.5" aria-hidden="true" />
+                )}
+                {copied ? 'Copiado' : 'Copiar'}
+              </span>
+              <span
+                role="button"
+                tabIndex={0}
+                onClick={(e) => {
                   e.stopPropagation();
                   clearAll();
-                }
-              }}
-              className="text-xs text-text-secondary transition-colors hover:text-red-500"
-            >
-              Limpiar todo
-            </span>
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.stopPropagation();
+                    clearAll();
+                  }
+                }}
+                className="text-xs text-text-secondary transition-colors hover:text-red-500"
+              >
+                Limpiar todo
+              </span>
+            </>
           )}
           {collapsed ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
         </span>
@@ -215,6 +246,8 @@ Reglas estrictas:
               onChange={(e) => setGeneralComment(e.target.value)}
               placeholder="Comentario general (opcional)…"
               rows={1}
+              spellCheck
+              lang="es"
               className="h-9 max-h-20 flex-1 resize-none rounded-lg border border-border-light bg-surface-secondary p-2 text-xs text-text-primary placeholder-text-secondary focus:outline-none focus:ring-1 focus:ring-border-medium"
             />
             <Button

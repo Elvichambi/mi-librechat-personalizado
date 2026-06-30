@@ -6,6 +6,7 @@ import DragDropWrapper from '~/components/Chat/Input/Files/DragDropWrapper';
 import { EditorProvider, ArtifactsProvider } from '~/Providers';
 import { useDeleteFilesMutation } from '~/data-provider';
 import Artifacts from '~/components/Artifacts/Artifacts';
+import ChatNotebookSelection from '~/components/Artifacts/ChatNotebookSelection';
 import { SidePanelGroup } from '~/components/SidePanel';
 import { useSetFilesToDelete } from '~/hooks';
 import store from '~/store';
@@ -67,6 +68,7 @@ export default function Presentation({ children }: { children: React.ReactNode }
           {children}
         </main>
       </SidePanelGroup>
+      <ChatNotebookSelection />
     </DragDropWrapper>
   );
 }

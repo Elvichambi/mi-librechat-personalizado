@@ -142,6 +142,8 @@ export default function SelectionPopover({
           onKeyDown={handleKeyDown}
           placeholder="Escribe qué cambiar en esta parte…"
           rows={2}
+          spellCheck
+          lang="es"
           className="max-h-32 min-h-[52px] w-full resize-none rounded-lg border border-border-light bg-surface-secondary p-2 pr-9 text-xs text-text-primary placeholder-text-secondary focus:outline-none focus:ring-1 focus:ring-border-medium"
         />
         <button

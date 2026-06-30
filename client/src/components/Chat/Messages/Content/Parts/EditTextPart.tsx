@@ -175,6 +175,8 @@ const EditTextPart = ({
           }}
           onKeyDown={handleKeyDown}
           data-testid="message-text-editor"
+          spellCheck
+          lang="es"
           className={cn(
             'markdown prose dark:prose-invert light whitespace-pre-wrap break-words pl-3 md:pl-4',
             'm-0 w-full resize-none border-0 bg-transparent py-[10px]',

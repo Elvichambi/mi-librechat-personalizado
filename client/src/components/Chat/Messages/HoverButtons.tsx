@@ -1,12 +1,13 @@
 import React, { useState, useMemo, memo } from 'react';
 import { useRecoilState, useSetRecoilState } from 'recoil';
 import { useQueryClient } from '@tanstack/react-query';
-import { MoreHorizontal, Trash2, GitFork, ClipboardType } from 'lucide-react';
+import { MoreHorizontal, Trash2, GitFork, ClipboardType, NotebookPen } from 'lucide-react';
 import type { TConversation, TMessage, TFeedback } from 'librechat-data-provider';
 import { request, QueryKeys, ForkOptions } from 'librechat-data-provider';
 import { EditIcon, Clipboard, CheckMark, ContinueIcon, RegenerateIcon, useToastContext } from '@librechat/client';
 import { useGenerationsByLatest, useLocalize, useNavigateToConvo, useNewConvo } from '~/hooks';
 import { useForkConvoMutation, useDeleteConversationMutation } from '~/data-provider';
+import { buildNotebookArtifact, extractMessageMarkdown, isLargeTextBlock } from '~/utils/notebook';
 import MessageAudio from './MessageAudio';
 import Feedback from './Feedback';
 import { cn } from '~/utils';
@@ -170,6 +171,9 @@ const HoverButtons = ({
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [TextToSpeech] = useRecoilState<boolean>(store.textToSpeech);
   const setLatestMessage = useSetRecoilState(store.latestMessageFamily(index));
+  const setArtifacts = useSetRecoilState(store.artifactsState);
+  const setCurrentArtifactId = useSetRecoilState(store.currentArtifactId);
+  const setArtifactsVisible = useSetRecoilState(store.artifactsVisibility);
 
   const endpoint = useMemo(() => {
     if (!conversation) {
@@ -347,6 +351,21 @@ const HoverButtons = ({
     });
   };
 
+  const notebookMarkdown = useMemo(() => extractMessageMarkdown(message), [message]);
+  const isBigBlock = useMemo(() => isLargeTextBlock(notebookMarkdown), [notebookMarkdown]);
+
+  /** Open this message's text in the side panel as a Cuaderno for annotation. */
+  const handleOpenNotebook = () => {
+    if (!notebookMarkdown.trim()) {
+      showToast({ message: 'No hay texto para abrir en el cuaderno.', status: 'warning' });
+      return;
+    }
+    const artifact = buildNotebookArtifact(message.messageId, notebookMarkdown);
+    setArtifacts((prev) => ({ ...(prev ?? {}), [artifact.id]: artifact }));
+    setCurrentArtifactId(artifact.id);
+    setArtifactsVisible(true);
+  };
+
   return (
     <div className="group visible flex justify-center gap-0.5 self-end focus-within:outline-none lg:justify-start">
       {/* Text to Speech */}
@@ -421,6 +440,20 @@ const HoverButtons = ({
           icon={<ContinueIcon className="w-19 h-19 -rotate-180" />}
           isLast={isLast}
           className="active"
+        />
+      )}
+
+      {/* Cuaderno Button — opens this message's text in the side panel for
+          annotation, without sending anything to the model. AI messages only.
+          For large text blocks (scripts, synopses) it stays visible and amber
+          so the user notices they can send the whole block to the cuaderno. */}
+      {!isCreatedByUser && (
+        <HoverButton
+          onClick={handleOpenNotebook}
+          title={isBigBlock ? 'Pasar este bloque al cuaderno' : 'Abrir en el cuaderno'}
+          icon={<NotebookPen size="19" />}
+          isLast={isLast}
+          className={isBigBlock ? 'md:opacity-100 text-amber-600 hover:text-amber-500' : ''}
         />
       )}
 

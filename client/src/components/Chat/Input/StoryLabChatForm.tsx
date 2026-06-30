@@ -286,6 +286,8 @@ const ChatForm = memo(function ChatForm({
                     tabIndex={0}
                     data-testid="text-input"
                     rows={1}
+                    spellCheck
+                    lang="es"
                     onFocus={handleTextareaFocus}
                     onBlur={handleTextareaBlur}
                     aria-label={localize('com_ui_message_input')}

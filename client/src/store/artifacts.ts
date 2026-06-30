@@ -1,5 +1,6 @@
 import { atom } from 'recoil';
 import { logger } from '~/utils';
+import { atomWithLocalStorage } from './utils';
 import type { Artifact } from '~/common';
 
 /**
@@ -92,17 +93,21 @@ export interface Annotation {
   comment: string;
 }
 
-/** Annotations the user has marked on a text artifact but not yet sent to the model. */
-export const pendingAnnotationsState = atom<Annotation[]>({
-  key: 'pendingAnnotationsState',
-  default: [],
-});
+/**
+ * Annotations the user has marked but not yet sent. Persisted to localStorage
+ * so a page refresh, a hung request, or closing the tab never loses the work —
+ * they're only cleared when the user sends or clears them.
+ */
+export const pendingAnnotationsState = atomWithLocalStorage<Annotation[]>(
+  'storylab:pending-annotations',
+  [],
+);
 
-/** Optional general comment sent alongside the accumulated annotations. */
-export const generalCommentState = atom<string>({
-  key: 'generalCommentState',
-  default: '',
-});
+/** Optional general comment sent alongside the annotations. Also persisted. */
+export const generalCommentState = atomWithLocalStorage<string>(
+  'storylab:general-comment',
+  '',
+);
 
 /** Ephemeral focus signal: artifact renderer flashes whatever annotation text is here.
  *  Set to a {text, ts} pair; the timestamp forces re-trigger when clicking the same item. */
